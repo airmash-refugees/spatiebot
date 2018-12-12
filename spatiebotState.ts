@@ -1,0 +1,37 @@
+class SpatiebotState {
+    previousVictimID: number;
+    victim: any;
+    lastUpgradeApplicationTime: number;
+    gotoCoords: any;
+    detectedPowerUps: any;
+    isVictimPoweredUp: boolean;
+    flagCarrierID: number;
+    objectToFleeFromID: number;
+    missileIDs: any[];
+    isFleeing: boolean;
+    isStuck: boolean;
+    stucknessTimeout: number;
+    stuckTimeStopTurning: number;
+    stuckTimeStopFlying: number;
+    heartbeatInterval: number;
+    previousTurnMovement: string;
+    turnMovement: string;
+    previousSpeedMovement: string;
+    speedMovement: string;
+    nextMovementExec: number;
+    previousIsFiring: boolean;
+    isFiring: boolean;
+    previousWhomp: boolean;
+    whomp: boolean;
+    previousFast: boolean;
+    fast: boolean;
+    fastTimeout: number;
+    fireTimeout: number;
+    stopFiringTimeout: number;
+    previous: any;
+    name: string;
+    isOn: boolean;
+    lastTimeVictimWasChosen: number;
+    suggestedVictimID: number;
+}
+export { SpatiebotState };

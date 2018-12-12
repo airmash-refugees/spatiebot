@@ -1,0 +1,130 @@
+declare var Network: any;
+declare var Players: any;
+
+import { SpatiebotState } from "./spatiebotState";
+import { BotConfig } from "./botConfigFactory";
+import { Spatie } from "./spatie";
+
+class SpatiebotCommandExecutor {
+
+    constructor(private state: SpatiebotState, private config: BotConfig) {
+    }
+
+    public clearCommands() {
+        Network.sendKey("LEFT", false);
+        Network.sendKey("RIGHT", false);
+        Network.sendKey("UP", false);
+        Network.sendKey("DOWN", false);
+        Network.sendKey("FIRE", false);
+        Network.sendKey("SPECIAL", false);
+    }
+    
+    public executeCommands() {
+
+        const turnChanged = this.state.previousTurnMovement !== this.state.turnMovement;
+        const movementChanged = this.state.previousSpeedMovement !== this.state.speedMovement;
+        const throttleTimeElapsed = !this.state.nextMovementExec || Date.now() > this.state.nextMovementExec;
+        const fireChanged = this.state.previousIsFiring !== this.state.isFiring;
+
+        let whompChanged;
+        if (this.config.useSpecial === "WHOMP") {
+            whompChanged = this.state.previousWhomp !== this.state.whomp;
+        }
+
+        let fastChanged;
+        if (this.config.useSpecial === "SPEED") {
+            fastChanged = this.state.previousFast !== this.state.fast;
+        }
+
+        if (throttleTimeElapsed || turnChanged || movementChanged || fastChanged || fireChanged || whompChanged) {
+
+            if (movementChanged) {
+                if (this.state.previousSpeedMovement) {
+                    Network.sendKey(this.state.previousSpeedMovement, false);
+                }
+                this.state.previousSpeedMovement = this.state.speedMovement;
+            }
+            if (turnChanged) {
+                if (this.state.previousTurnMovement) {
+                    Network.sendKey(this.state.previousTurnMovement, false);
+                }
+                this.state.previousTurnMovement = this.state.turnMovement;
+            }
+            if (fastChanged) {
+                this.state.previousFast = this.state.fast;
+            }
+            if (fireChanged) {
+                this.state.previousIsFiring = this.state.isFiring;
+            }
+            if (this.state.turnMovement && (turnChanged || throttleTimeElapsed)) {
+                Network.sendKey(this.state.turnMovement, true);
+            }
+            if (this.state.speedMovement && (movementChanged || throttleTimeElapsed)) {
+                Network.sendKey(this.state.speedMovement, true);
+            }
+
+            if (this.config.useSpecial === "SPEED") {
+                if (fastChanged || throttleTimeElapsed) {
+                    if (this.state.fast) {
+                        if (!this.state.fastTimeout) {
+                            Network.sendKey("SPECIAL", true);
+                            this.state.fastTimeout = setTimeout(() => {
+                                Network.sendKey("SPECIAL", false);
+                                this.state.fastTimeout = null;
+                            }, 1000);
+                        }
+                    } else {
+                        Network.sendKey("SPECIAL", false);
+                    }
+                }
+            }
+
+            if (fireChanged || throttleTimeElapsed) {
+                let fireKey = "FIRE";
+                if (this.config.useSpecial === "FIRE") {
+                    fireKey = "SPECIAL";
+                }
+
+                if (this.state.isFiring) {
+                    if (!this.state.fireTimeout) {
+                        Network.sendKey(fireKey, true);
+
+                        // don't turn the firebutton off if fireConstantly is on
+                        if (!this.config.fireConstantly) {
+                            const stopFiringTimeout = this.state.stopFiringTimeout || 1000;
+                            this.state.fireTimeout = setTimeout(() => {
+                                Network.sendKey(fireKey, false);
+                                this.state.fireTimeout = null;
+                            }, stopFiringTimeout);
+                        }
+                    }
+                } else {
+                    Network.sendKey(fireKey, false);
+                }
+            }
+
+            // don't repeat following special commands on throttle elapsed, because they work one time only
+            let doSpecial = false;
+
+            if (this.config.useStealth && this.config.useSpecial === "STEALTH" && !Players.getMe().stealthed) {
+                doSpecial = true;
+            }
+
+            if (whompChanged) {
+                doSpecial = true;
+                this.state.whomp = false;
+                this.state.previousWhomp = false;
+            }
+
+            if (doSpecial) {
+                Spatie.log("Sending special");
+                Network.sendKey("SPECIAL", true);
+                setTimeout(() => Network.sendKey("SPECIAL", false), 100);
+            }
+
+            this.state.nextMovementExec = Date.now() + this.config.throttleInterval;
+        }
+    }
+}
+
+export { SpatiebotCommandExecutor };
