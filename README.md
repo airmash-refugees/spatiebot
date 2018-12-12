@@ -2,7 +2,7 @@
 
 Build the spatiebot: 
 
-> npm install
+> npm install  
 > npm run build
 
 This leads to a minified spatiebot.js
