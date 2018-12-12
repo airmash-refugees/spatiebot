@@ -2,19 +2,40 @@ declare var SWAM: any;
 declare var Mobs: any;
 declare var UI: any;
 declare var Graphics: any;
+declare var SettingsProvider: any;
 
 import { Spatie } from "./spatie";
 import { SpatieBot } from "./spatiebot";
 
-
 let currentBot: SpatieBot = null;
+let limitUpdates: boolean = false;
 
 function createNewBot() {
-    currentBot = new SpatieBot();
+    const newBot = new SpatieBot();
 
     // expose to manipulating in the console
     (<any>Window).Spatie = Spatie;
-    (<any>Window).SpatieBot = currentBot;
+    (<any>Window).SpatieBot = newBot;
+
+    return newBot;
+}
+
+function createSettingsProvider() {
+    // this is the handler that will be executed when new settings are applied
+    function onApply(values: any) {
+        limitUpdates = values.limitUpdates;
+    }
+
+    // default values for the settings
+    let defaultValues = {
+        limitUpdates: false,
+    };
+
+    let sp = new SettingsProvider(defaultValues, onApply);
+    let section = sp.addSection("SpatieBot settings");
+    section.addBoolean("limitUpdates", "Don't update screen when window doesn't have focus (for hosting many bots)");
+
+    return sp;
 }
 
 SWAM.registerExtension({
@@ -22,7 +43,8 @@ SWAM.registerExtension({
     id: "spatie02",
     description: "Runs one bot",
     author: "Spatie",
-    version: "2.0"
+    version: "3.0",
+    settingsProvider: createSettingsProvider(),
 });
 
 SWAM.on("gamePrep", function () {
@@ -70,7 +92,7 @@ SWAM.on("gamePrep", function () {
     // suspend the raw game rendering if the window doesn't have focus
     const orgRender = Graphics.render;
     Graphics.render = function () {
-        if (document.hasFocus()) {
+        if (!limitUpdates || document.hasFocus()) {
             orgRender.apply(null, arguments);
         }
     };
@@ -83,7 +105,7 @@ SWAM.on("keyup", function (evt: any) {
             currentBot.dispose();
             currentBot = null;
         } else {
-            currentBot = new SpatieBot();
+            currentBot = createNewBot();
             currentBot.initialize();
         }
     }
