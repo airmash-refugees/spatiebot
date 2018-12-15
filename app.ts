@@ -9,6 +9,7 @@ import { SpatieBot } from "./spatiebot";
 
 let currentBot: SpatieBot = null;
 let limitUpdates: boolean = false;
+let toggleKey: string = "b";
 
 function createNewBot() {
     const newBot = new SpatieBot();
@@ -24,31 +25,34 @@ function createSettingsProvider() {
     // this is the handler that will be executed when new settings are applied
     function onApply(values: any) {
         limitUpdates = values.limitUpdates;
+        toggleKey = values.toggleKey;
     }
 
     // default values for the settings
     let defaultValues = {
         limitUpdates: false,
+        toggleKey: "b",
     };
 
     let sp = new SettingsProvider(defaultValues, onApply);
     let section = sp.addSection("SpatieBot settings");
     section.addBoolean("limitUpdates", "Don't update screen when window doesn't have focus (for hosting many bots)");
+    section.addString("toggleKey", "Key to press to toggle the bot", {maxLength: 1});
 
     return sp;
 }
 
 SWAM.registerExtension({
-    name: "SpatieBot 2.0",
+    name: "SpatieBot 3.1",
     id: "spatie02",
     description: "Runs one bot",
     author: "Spatie",
-    version: "3.0",
+    version: "3.1",
     settingsProvider: createSettingsProvider(),
 });
 
 SWAM.on("gamePrep", function () {
-    console.log("Press 'B' to toggle bot");
+    console.log("Press '" + toggleKey + "' to toggle bot");
 
     // hijack the Mobs.add function to detect missiles being fired
     const orgMobsAdd = Mobs.add;
@@ -100,7 +104,7 @@ SWAM.on("gamePrep", function () {
 
 SWAM.on("keyup", function (evt: any) {
     const key = evt.originalEvent.key;
-    if (key === "B" || key === "b") {
+    if (key === toggleKey.toLocaleUpperCase() || key === toggleKey.toLocaleLowerCase()) {
         if (currentBot) {
             currentBot.dispose();
             currentBot = null;
