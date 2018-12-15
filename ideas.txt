@@ -1,5 +1,0 @@
-Bombita: AutoPilot is probably a part of starmash? spatiebot.js:1:3206
-Bombita: yes spatiebot.js:1:3206
-Bombita: what are the parameters? spatiebot.js:1:3206
-Bombita: i made the autopilot as a challenge from detect a few months ago 😛 spatiebot.js:1:3206
-Bombita: AutoPilot.rotateTo(angle, player, delay = 250, callback)
