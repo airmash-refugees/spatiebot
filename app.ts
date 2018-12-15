@@ -1,8 +1,9 @@
-declare var SWAM: any;
-declare var Mobs: any;
-declare var UI: any;
-declare var Graphics: any;
-declare var SettingsProvider: any;
+declare const SWAM: any;
+declare const Mobs: any;
+declare const UI: any;
+declare const Graphics: any;
+declare const SettingsProvider: any;
+declare const game: any;
 
 import { Spatie } from "./spatie";
 import { SpatieBot } from "./spatiebot";
@@ -37,7 +38,7 @@ function createSettingsProvider() {
     let sp = new SettingsProvider(defaultValues, onApply);
     let section = sp.addSection("SpatieBot settings");
     section.addBoolean("limitUpdates", "Don't update screen when window doesn't have focus (for hosting many bots)");
-    section.addString("toggleKey", "Key to press to toggle the bot", {maxLength: 1});
+    section.addString("toggleKey", "Key to press to toggle the bot", { maxLength: 1 });
 
     return sp;
 }
@@ -115,6 +116,15 @@ SWAM.on("keyup", function (evt: any) {
     }
 });
 
+SWAM.on("playerImpacted", function (data: any) {
+    const owner = data.owner;
+    const impactedPlayer = data.players[0].id;
+
+    if (currentBot && impactedPlayer === game.myID) {
+        currentBot.onHit(owner);
+    }
+});
+
 SWAM.on("playerKilled", function (data: any, dead: any, killer: any) {
     if (currentBot) {
         currentBot.onPlayerKilled(dead.id, killer.id);
@@ -135,6 +145,12 @@ SWAM.on("chatLineAdded", function (player: any, text: any, type: any) {
             if (suggestionMatch) {
                 const suggestedVictim = suggestionMatch[1];
                 currentBot.suggestVictim(player.id, suggestedVictim);
+            } else {
+                const configRe = /-sb-config[: ]+(.*)/;
+                const configMatch = configRe.exec(text);
+                if (configMatch && player.id === game.myID) {
+                    currentBot.switchConfig(configMatch[1]);
+                }
             }
         }
     }

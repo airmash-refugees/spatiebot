@@ -6,12 +6,13 @@
     "build": "webpack -p"
   },
   "dependencies": {
+    "@types/jquery": "3.3.24",
     "clean-webpack-plugin": "0.1.19",
     "html-webpack-plugin": "3.2.0",
+    "pathfinding": "^0.4.18",
     "ts-loader": "4.4.2",
     "typescript": "3.0.1",
     "webpack": "4.16.5",
-    "webpack-cli": "3.1.0",
-    "@types/jquery": "3.3.24"
+    "webpack-cli": "3.1.0"
   }
 }

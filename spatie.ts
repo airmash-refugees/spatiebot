@@ -23,7 +23,7 @@ const Spatie = {
         sp.htmlDecodeHelper.innerHTML = html;
         return sp.htmlDecodeHelper.value;
     },
-    getDeltaTo: function(what: any) {
+    getDeltaTo: function (what: any) {
         what = what || this.state.victim;
 
         // accuracy
@@ -43,10 +43,10 @@ const Spatie = {
 
         return delta;
     },
-    getHostilePlayersSortedByDistance: function(excludeID: number = null) {
+    getHostilePlayersSortedByDistance: function (excludeID: number = null, includeIDs: number[] = null) {
         const allPlayers = Spatie.getPlayers();
         const players = allPlayers.filter(p =>
-            p.team !== game.myTeam && p.id !== excludeID
+            p.team !== game.myTeam && p.id !== excludeID && (!includeIDs || includeIDs.indexOf(p.id) > -1)
         );
 
         players.sort((victimA, victimB) => {

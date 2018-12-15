@@ -4,21 +4,23 @@ declare var Players: any;
 declare var Network: any;
 declare var game: any;
 
-import { BotConfigFactory } from "./botConfigFactory";
+import { BotConfigFactory, BotConfig } from "./botConfigFactory";
 import { Spatie } from "./spatie";
 import { SpatiebotState } from "./spatiebotState";
 import { SpatiebotCommandExecutor } from "./spatiebotCommandExecutor";
 import { SpatiebotVictimSelection } from "./spatiebotVictimSelection";
+import { PlayerStat } from "./playerStat";
 
 const botConfigFactory = new BotConfigFactory();
+let lastConfiguration: BotConfig;
 const upgradeInfo = {
     availableUpgrades: 0,
     upgradeStats: <any>{}
 };
+const playerStats: PlayerStat[] = [];
 
 class SpatieBot {
-
-    private config;
+    private config: BotConfig;
     private state: SpatiebotState;
     private commandExecutor: SpatiebotCommandExecutor;
     private victimSelection: SpatiebotVictimSelection;
@@ -46,15 +48,25 @@ class SpatieBot {
         }
     }
 
-    public initialize() {
+    public goto(x: number, y: number) {
+        this.state.gotoCoords = { x, y};
+    }
+
+    public initialize(config: BotConfig = null) {
         if (this.isOn()) {
             return;
         }
 
+        config = config ||
+            lastConfiguration ||
+            botConfigFactory.getConfigByAircraftType(Players.getMe().type);
+
+        lastConfiguration = config;
+        this.config = config;
+
         this.state = new SpatiebotState();
-        this.config = botConfigFactory.getConfigByAircraftType(Players.getMe().type);
         this.commandExecutor = new SpatiebotCommandExecutor(this.state, this.config);
-        this.victimSelection = new SpatiebotVictimSelection(this.state, this.config);
+        this.victimSelection = new SpatiebotVictimSelection(this.state, this.config, playerStats);
 
         Spatie.log("Starting bot of type " + this.config.name);
 
@@ -74,14 +86,18 @@ class SpatieBot {
         Spatie.log(JSON.stringify(this.state));
     }
 
-    public onMissileFired(missileID: number) {
+    public onHit(attackingPlayerID: number) {
         if (!this.isOn()) {
             return;
         }
 
-        // keep track of this missile to flee from it when necessary
-        this.state.missileIDs = this.state.missileIDs || [];
-        this.state.missileIDs.push(missileID);
+        let playerStat = playerStats.filter(x => x.id === attackingPlayerID)[0];
+        if (!playerStat) {
+            playerStat = new PlayerStat(attackingPlayerID);
+            playerStats.push(playerStat);
+        }
+
+        playerStat.addHit();
     }
 
     public onMobAdd(playerID: number, mob: any) {
@@ -130,15 +146,15 @@ class SpatieBot {
         }
     }
 
-    public onPowerupDetected(powerupID: number) {
-        if (!this.isOn()) {
-            return;
+    public switchConfig(configName: string): any {
+        if (this.config.name !== configName) {
+            const newConfig = botConfigFactory.getConfigByName(configName);
+
+            if (newConfig) {
+                this.dispose();
+                this.initialize(newConfig);
+            }
         }
-        if (!this.config.goForUpgrades) {
-            return;
-        }
-        this.state.detectedPowerUps = this.state.detectedPowerUps || [];
-        this.state.detectedPowerUps.push(powerupID);
     }
 
     public toggleBonding() {
@@ -203,6 +219,8 @@ class SpatieBot {
             this.setFastMovement(true);
             this.setSpeedMovement("UP");
         } else {
+            this.setFastMovement(false);
+            this.setSpeedMovement(null);
             this.state.gotoCoords = null;
         }
     }
@@ -344,7 +362,16 @@ class SpatieBot {
         // detect nearby enemies
         if (!this.state.objectToFleeFromID) {
             const victimID = this.state.victim ? this.state.victim.id : null;
-            const closestEnemy = Spatie.getHostilePlayersSortedByDistance(victimID)[0];
+
+            let agressivePlayerIDs;
+            if (!this.config.offensive) {
+                // if the bot is not an offensive bot, only flee from proven agressive players
+                agressivePlayerIDs = playerStats
+                    .filter(x => x.isAgressive)
+                    .map(x => x.id);
+            }
+
+            const closestEnemy = Spatie.getHostilePlayersSortedByDistance(victimID, agressivePlayerIDs)[0];
             if (closestEnemy) {
                 const delta = Spatie.getDeltaTo(closestEnemy);
                 const dangerDistance = dangerFactorForHealth * this.config.distanceTooClose;
@@ -423,9 +450,6 @@ class SpatieBot {
     }
 
     private fireAtVictim() {
-        if (this.config.holdFire) {
-            return;
-        }
         if (this.config.fireConstantly) {
             this.setFire(true, null);
             return;
@@ -436,7 +460,7 @@ class SpatieBot {
 
         // always fire when we have an upgrade
         if (!shouldFire) {
-            const isRampaging = Players.getMe().powerups.rampage;
+            const isRampaging = this.hasRampage();
             shouldFire = isRampaging;
         }
 
@@ -555,16 +579,20 @@ class SpatieBot {
             this.approachCoords();
             this.detectStuckness();
             this.detectShouldFlee();
-        } else {
-            this.state.name = "chase victim " + (this.state.victim ? this.state.victim.name : "-");
-            this.detectFlagTaken();
-            this.victimSelection.reconsiderVictim();
+        } else if (this.state.victim) {
+            this.state.name = "chase victim " + this.state.victim.name;
             this.turnToVictim();
             this.approachVictim();
             this.fireAtVictim();
             this.detectVictimPowerUps();
             this.detectStuckness();
             this.detectShouldFlee();
+            this.detectFlagTaken();
+            this.victimSelection.selectVictim();
+        } else {
+            this.state.name = "finding life purpose";
+            this.detectFlagTaken();
+            this.victimSelection.selectVictim();
         }
 
         if (this.state.name !== this.state.previous) {
@@ -572,12 +600,45 @@ class SpatieBot {
         }
 
         this.applyUpgrades();
-        this.commandExecutor.executeCommands();
+        this.detectAwayFromHome();
         this.detectDangerousObjects();
+        this.commandExecutor.executeCommands();
+    }
+
+    private detectAwayFromHome() {
+        if (!this.config.protectHomeBase) {
+            return;
+        }
+
+        const deltaFromHome = Spatie.calcDiff(Players.getMe().pos, this.config.homeBase);
+        if (deltaFromHome.distance > this.config.homeBase.radius) {
+            this.state.gotoCoords = this.config.homeBase;
+        }
     }
 
     private isOn() {
         return !!this.state;
+    }
+
+    private onMissileFired(missileID: number) {
+        if (!this.isOn()) {
+            return;
+        }
+
+        // keep track of this missile to flee from it when necessary
+        this.state.missileIDs = this.state.missileIDs || [];
+        this.state.missileIDs.push(missileID);
+    }
+
+    private onPowerupDetected(powerupID: number) {
+        if (!this.isOn()) {
+            return;
+        }
+        if (!this.config.goForUpgrades) {
+            return;
+        }
+        this.state.detectedPowerUps = this.state.detectedPowerUps || [];
+        this.state.detectedPowerUps.push(powerupID);
     }
 
     private setFire(isFiring: boolean, stopFiringTimeout: number = null) {

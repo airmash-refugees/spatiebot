@@ -4,13 +4,43 @@ declare const game: any;
 import { SpatiebotState } from "./spatiebotState";
 import { Spatie } from "./spatie";
 import { BotConfig } from "./botConfigFactory";
+import { PlayerStat } from "./playerStat";
 
 class SpatiebotVictimSelection {
 
-    constructor(private state: SpatiebotState, private config: BotConfig) {
+    constructor(private state: SpatiebotState, private config: BotConfig, private playerStats: PlayerStat[]) {
     }
 
-    public reconsiderVictim() {
+    public selectVictim() {
+        if (this.config.offensive) {
+            this.selectVictimOffensively();
+        } else if (this.config.protectHomeBase) {
+            this.selectVictimDefensively();
+        } else {
+            // passive bot apparently...
+        }
+    }
+
+    private selectVictimDefensively() {
+        this.state.victim = null; // always drop the victim by default.
+
+        const now = Date.now();
+
+        const agressivePlayerIDs = this.playerStats
+            .filter(x => x.isAgressive)
+            .map(x => x.id);
+
+        const agressivePlayers = Spatie.getHostilePlayersSortedByDistance(null, agressivePlayerIDs)
+            .filter(x => this.isVictimValid(x));
+
+        if (agressivePlayers.length === 0) {
+            return;
+        }
+
+        this.state.victim = agressivePlayers[0];
+    }
+
+    private selectVictimOffensively() {
         const currentVictim = this.state.victim;
 
         let victim = this.getBestVictim();
@@ -189,4 +219,4 @@ class SpatiebotVictimSelection {
     }
 }
 
-export {SpatiebotVictimSelection};
+export { SpatiebotVictimSelection };

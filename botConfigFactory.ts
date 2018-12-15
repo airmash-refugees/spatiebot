@@ -11,9 +11,11 @@ class BotConfig {
     fireConstantly: boolean;
     goForUpgrades: boolean;
     heartbeatInterval: number;
-    holdFire: boolean;
+    homeBase: { x: number, y: number, radius: number };
     name: string;
+    offensive: boolean;
     precision: number;
+    protectHomeBase: boolean;
     throttleInterval: number;
     respawnTimeout: number;
     stucknessTurnDurationMs: number;
@@ -27,6 +29,7 @@ class BotConfig {
 class BotConfigFactory {
     private readonly normalBotConfig: BotConfig = {
         applyUpgradesTo: 4,
+        offensive: true,
         bondingTimes: 0,
         distanceFar: 600,
         distanceNear: 450,
@@ -37,10 +40,11 @@ class BotConfigFactory {
         fleeHealthThresholdMax: 0.7,
         fireConstantly: false,
         goForUpgrades: true,
+        homeBase: null,
         heartbeatInterval: 75,
-        holdFire: false,
         name: "normal",
         precision: 0.1,
+        protectHomeBase: false,
         throttleInterval: 150,
         respawnTimeout: 4000,
         stucknessTurnDurationMs: 500,
@@ -51,19 +55,13 @@ class BotConfigFactory {
         victimExpireMs: 120 * 1000,
     };
 
-    private readonly peacefulBotConfig: BotConfig = {
+    private readonly squareProtectingBotConfig: BotConfig = {
         ...this.normalBotConfig, ...{
             applyUpgradesTo: 2,
-            distanceFar: 1200,
-            distanceNear: 850,
-            distanceClose: 600,
-            distanceTooClose: 400,
-            fleeHealthThresholdMin: 0.5,
-            fleeHealthThresholdMax: 0.9,
-            goForUpgrades: true,
-            holdFire: true,
-            name: "peaceful",
-            precision: 0.3
+            offensive: false,
+            homeBase: { x: 926, y: -2805, radius: 500 },
+            name: "squareProtecting",
+            protectHomeBase: true,
         }
     };
 
@@ -133,35 +131,17 @@ class BotConfigFactory {
     };
 
     public getConfigByName(name: string): BotConfig {
-        let botConfig = this.normalBotConfig;
+        const availableConfigs = [
+            this.squareProtectingBotConfig,
+            this.agressiveBotConfig,
+            this.copterBotConfig,
+            this.tornadoBotConfig,
+            this.prowlerBotConfig,
+            this.goliathBotConfig,
+        ];
 
-        switch (name) {
-            case "peaceful":
-                botConfig = this.peacefulBotConfig;
-                break;
-
-            case "agressive":
-                botConfig = this.agressiveBotConfig;
-                break;
-
-            case "copter":
-                botConfig = this.copterBotConfig;
-                break;
-
-            case "tornado":
-                botConfig = this.tornadoBotConfig;
-                break;
-
-            case "prowler":
-                botConfig = this.prowlerBotConfig;
-                break;
-
-            case "goliath":
-                botConfig = this.goliathBotConfig;
-                break;
-        }
-
-        return botConfig;
+        const result = availableConfigs.filter(x => x.name === name)[0];
+        return result;
     }
 
     public getConfigByAircraftType(type: number): BotConfig {
