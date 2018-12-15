@@ -14,8 +14,6 @@ class SpatiebotState {
     stuckTimeStopTurning: number;
     stuckTimeStopFlying: number;
     heartbeatInterval: number;
-    previousTurnMovement: string;
-    turnMovement: string;
     previousSpeedMovement: string;
     speedMovement: string;
     nextMovementExec: number;
@@ -33,5 +31,9 @@ class SpatiebotState {
     isOn: boolean;
     lastTimeVictimWasChosen: number;
     suggestedVictimID: number;
+    desiredAngle: number;
+    lastDesiredAngle: number;
+    suggestingPlayerID: number;
+    hasLockOnTarget: number;
 }
 export { SpatiebotState };

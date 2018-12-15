@@ -8,6 +8,7 @@ import { BotConfigFactory } from "./botConfigFactory";
 import { Spatie } from "./spatie";
 import { SpatiebotState } from "./spatiebotState";
 import { SpatiebotCommandExecutor } from "./spatiebotCommandExecutor";
+import { SpatiebotVictimSelection } from "./spatiebotVictimSelection";
 
 const botConfigFactory = new BotConfigFactory();
 const upgradeInfo = {
@@ -20,6 +21,7 @@ class SpatieBot {
     private config;
     private state: SpatiebotState;
     private commandExecutor: SpatiebotCommandExecutor;
+    private victimSelection: SpatiebotVictimSelection;
     public upgradeInfo = upgradeInfo;
 
     public announceTarget() {
@@ -39,6 +41,7 @@ class SpatieBot {
             this.commandExecutor.clearCommands();
 
             this.commandExecutor = null;
+            this.victimSelection = null;
             this.state = null;
         }
     }
@@ -51,6 +54,7 @@ class SpatieBot {
         this.state = new SpatiebotState();
         this.config = botConfigFactory.getConfigByAircraftType(Players.getMe().type);
         this.commandExecutor = new SpatiebotCommandExecutor(this.state, this.config);
+        this.victimSelection = new SpatiebotVictimSelection(this.state, this.config);
 
         Spatie.log("Starting bot of type " + this.config.name);
 
@@ -152,31 +156,16 @@ class SpatieBot {
         }
     }
 
-    public suggestVictim(playerID: number, suggestedVictim: any) {
+    public suggestVictim(playerID: number, suggestedVictim: string) {
         if (!this.isOn()) {
             return;
         }
 
-        const randomNumber = Spatie.getRandomNumber(0, 4);
-        let victim;
-        let tookOverSuggestion;
-        if (randomNumber !== 0) {
-            // take over suggestion
-            victim = Players.getByName(suggestedVictim);
-            if (victim.id !== game.myID) {
-                this.state.suggestedVictimID = victim ? victim.id : null;
-                tookOverSuggestion = true;
-            }
-        }
+        const suggestedPlayer = Players.getByName(suggestedVictim);
 
-        if (victim) {
-            Spatie.announce("ok, new target: " + suggestedVictim);
-        } else {
-            // suggestion overruled (or player not found)
-            this.state.suggestedVictimID = playerID;
-            if (!tookOverSuggestion) {
-                Spatie.announce("ok, new target: " + Players.get(playerID).name);
-            }
+        if (suggestedPlayer && suggestedPlayer.id !== game.myID) {
+            this.state.suggestedVictimID = suggestedPlayer.id;
+            this.state.suggestingPlayerID = playerID;
         }
     }
 
@@ -208,7 +197,7 @@ class SpatieBot {
 
         this.turnTo(poi);
 
-        const delta = this.getDeltaTo(poi);
+        const delta = Spatie.getDeltaTo(poi);
 
         if (delta.distance > this.config.distanceClose) {
             this.setFastMovement(true);
@@ -226,7 +215,7 @@ class SpatieBot {
             var powerup = Mobs.get(this.state.detectedPowerUps[i]);
             if (powerup) {
                 powerups.push(powerup.id);
-                powerup.delta = this.getDeltaTo(powerup);
+                powerup.delta = Spatie.getDeltaTo(powerup);
                 if (!closestPowerup || closestPowerup.delta.distance > powerup.delta.distance) {
                     closestPowerup = powerup;
                 }
@@ -252,7 +241,7 @@ class SpatieBot {
             return;
         }
 
-        const delta = this.getDeltaTo(victim);
+        const delta = Spatie.getDeltaTo(victim);
 
         var direction;
         this.setFastMovement(false);
@@ -272,25 +261,6 @@ class SpatieBot {
         }
 
         this.setSpeedMovement(direction);
-    }
-
-    private chooseNextVictim() {
-        const players = this.getHostilePlayersSortedByDistance(this.state.previousVictimID);
-
-        // take the nearest player
-        const victim = players[0];
-
-        // keep the last victim, or if no victim was chosen,
-        // remove the id, to be able to reselect the previous
-        // victim again if there's only 1 other player
-        this.state.previousVictimID = victim ? victim.id : null;
-
-        // also remove the bonding if no victim was chosen: apparently only spatiebots are in the game
-        if (!victim) {
-            this.config.bondingTimes = 0;
-        }
-
-        return victim;
     }
 
     private detectFlagTaken() {
@@ -374,9 +344,9 @@ class SpatieBot {
         // detect nearby enemies
         if (!this.state.objectToFleeFromID) {
             const victimID = this.state.victim ? this.state.victim.id : null;
-            const closestEnemy = this.getHostilePlayersSortedByDistance(victimID)[0];
+            const closestEnemy = Spatie.getHostilePlayersSortedByDistance(victimID)[0];
             if (closestEnemy) {
-                const delta = this.getDeltaTo(closestEnemy);
+                const delta = Spatie.getDeltaTo(closestEnemy);
                 const dangerDistance = dangerFactorForHealth * this.config.distanceTooClose;
                 if (delta.isAccurate && delta.distance < dangerDistance) {
                     this.state.objectToFleeFromID = closestEnemy.id;
@@ -423,6 +393,15 @@ class SpatieBot {
                     // stuckness is probably caused by the powerups?
                     this.state.detectedPowerUps = null;
                 }
+
+                // turn a random angle around 90 degrees
+                const pi = Math.atan2(0, -1);
+                const randomAngle = Spatie.getRandomNumber(pi * 0.3 * 100, pi * 0.4 * 100) / 100;
+                let randomDirection = Spatie.getRandomNumber(0, 2);
+                randomDirection = randomDirection === 0 ? -1 : 1;
+
+                this.setDesiredAngle(Players.getMe().rot + (randomDirection * randomAngle));
+
             }
         } else {
             this.state.stucknessTimeout = this.state.stucknessTimeout + this.config.heartbeatInterval;
@@ -464,7 +443,7 @@ class SpatieBot {
         // otherwise fire if near the victim
         if (!shouldFire) {
             if (this.state.victim) {
-                const delta = this.getDeltaTo(this.state.victim);
+                const delta = Spatie.getDeltaTo(this.state.victim);
                 shouldFire = delta.distance < this.config.distanceNear;
             }
         }
@@ -495,70 +474,10 @@ class SpatieBot {
         if (directionToThing < 0) {
             directionToThing = pi * 2 + directionToThing;
         }
-        let rotDiff = directionToThing - me.rot;
 
-        let steerTo;
-        if (Math.abs(rotDiff) > this.config.precision * 2) {
-            if (rotDiff > 0 && rotDiff <= pi) {
-                steerTo = "RIGHT";
-            } else {
-                steerTo = "LEFT";
-            }
-        }
-        this.setTurnMovement(steerTo);
+        this.setDesiredAngle(directionToThing);
         this.setFastMovement(true);
         this.setSpeedMovement("DOWN");
-    }
-
-    private getDeltaTo(what: any) {
-        what = what || this.state.victim;
-
-        // accuracy
-        let isAccurate = true;
-        let victimPos = what.pos;
-        if (what.lowResPos) {
-            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < this.config.distanceNear;
-            victimPos = isAccurate ? victimPos : what.lowResPos;
-        }
-
-        const myPos = Players.getMe().pos;
-
-        const delta = {
-            ...Spatie.calcDiff(myPos, victimPos),
-            isAccurate: isAccurate
-        };
-
-        return delta;
-    }
-
-    private getHostilePlayersSortedByDistance(excludeID: number = null) {
-        const allPlayers = Spatie.getPlayers();
-        const players = allPlayers.filter(p =>
-            p.team !== game.myTeam && p.id !== excludeID
-        );
-
-        players.sort((victimA, victimB) => {
-            const a = this.getDeltaTo(victimA);
-            const b = this.getDeltaTo(victimB);
-
-            if (a.isAccurate && !b.isAccurate) {
-                return -1;
-            }
-            if (!a.isAccurate && b.isAccurate) {
-                return 1;
-            }
-
-            if (a.distance < b.distance) {
-                return -1;
-            }
-            if (b.distance < a.distance) {
-                return 1;
-            }
-
-            return 0;
-        });
-
-        return players;
     }
 
     private handleFlee() {
@@ -567,13 +486,13 @@ class SpatieBot {
             this.state.isFleeing = false;
             return;
         }
-        const playerToFleeFrom = this.getHostilePlayersSortedByDistance()[0];
+        const playerToFleeFrom = Spatie.getHostilePlayersSortedByDistance()[0];
         if (!playerToFleeFrom) {
             this.state.isFleeing = false;
             return;
         }
 
-        const delta = this.getDeltaTo(playerToFleeFrom);
+        const delta = Spatie.getDeltaTo(playerToFleeFrom);
         if (delta.distance > this.config.distanceFar * 2) {
             this.state.isFleeing = false;
             return;
@@ -597,15 +516,8 @@ class SpatieBot {
 
     private handleStuckness() {
         var ms = Date.now();
-        if (ms < this.state.stuckTimeStopTurning) {
-            if (!this.state.turnMovement) {
-                const direction = ["LEFT", "RIGHT"][Spatie.getRandomNumber(0, 2)];
-                this.setTurnMovement(direction);
-            }
+        if (ms < this.state.stuckTimeStopFlying) {
             this.setSpeedMovement("DOWN");
-        } else if (ms >= this.state.stuckTimeStopTurning && ms < this.state.stuckTimeStopFlying) {
-            this.setTurnMovement(null);
-            this.setSpeedMovement("UP");
         } else if (ms >= this.state.stuckTimeStopFlying) {
             this.setSpeedMovement(null);
             this.state.isStuck = false;
@@ -646,7 +558,7 @@ class SpatieBot {
         } else {
             this.state.name = "chase victim " + (this.state.victim ? this.state.victim.name : "-");
             this.detectFlagTaken();
-            this.reconsiderVictim();
+            this.victimSelection.reconsiderVictim();
             this.turnToVictim();
             this.approachVictim();
             this.fireAtVictim();
@@ -668,95 +580,18 @@ class SpatieBot {
         return !!this.state;
     }
 
-    private reconsiderVictim() {
-        let hadVictim = !!this.state.victim;
-        let victim;
-
-        // always choose flag carrier as victim if there is one
-        if (this.state.flagCarrierID) {
-            hadVictim = false;
-            victim = Players.get(this.state.flagCarrierID);
-        } else {
-            // choose a new victim if no victim selected
-            victim = this.state.victim || this.chooseNextVictim();
-
-            if (!victim) {
-                return;
-            }
-
-            const elapsedMsSinceLastChosenVictim = Date.now() - this.state.lastTimeVictimWasChosen;
-
-            const isActive = !!Players.get(victim.id);
-            const isSpectating = victim.removedFromMap;
-            const isProwler = victim.type === 5;
-            const hasSuggestionForOtherVictim = !!this.state.suggestedVictimID;
-            const isVictimImmune = !!/^test.*/.exec(victim.name) ||
-                (this.config.bondingTimes > 0 && !!/^.+Bot.*/.exec(victim.name));
-
-            let isExpired;
-            if (this.state.lastTimeVictimWasChosen) {
-                isExpired = elapsedMsSinceLastChosenVictim > this.config.victimExpireMs;
-            }
-
-            if (!isActive || isProwler || isSpectating || isExpired || isVictimImmune) {
-                // choose another victim
-                victim = null;
-            }
-
-            if (hasSuggestionForOtherVictim) {
-                Spatie.log("Victim was suggested: " + this.state.suggestedVictimID);
-                hadVictim = false;
-                victim = Players.get(this.state.suggestedVictimID);
-                this.state.suggestedVictimID = null;
-            }
-
-            if (victim) {
-                // if there are other players closer by, consider chasing them
-                const closestHostilePlayer = this.getHostilePlayersSortedByDistance()[0];
-                if (closestHostilePlayer.id !== victim.id) {
-                    const victimDistance = this.getDeltaTo(victim);
-                    const closestPlayerDistance = this.getDeltaTo(closestHostilePlayer);
-
-                    let shouldSwitch;
-                    if (!closestPlayerDistance.isAccurate || victimDistance.distance < this.config.distanceClose) {
-                        shouldSwitch = false;
-                    } else if (closestPlayerDistance.isAccurate && !victimDistance.isAccurate) {
-                        shouldSwitch = true;
-                    } else if (closestPlayerDistance.distance / victimDistance.distance < 0.5) {
-                        shouldSwitch = true;
-                    }
-
-                    if (shouldSwitch) {
-                        victim = closestHostilePlayer;
-                        hadVictim = false;
-                    }
-                }
-            }
-        }
-
-        const hasVictim = !!victim;
-
-        if (hasVictim !== hadVictim) {
-            if (hadVictim && !hasVictim) {
-                Spatie.log("Dropped victim " + this.state.victim.name);
-            } else if (hasVictim && !hadVictim) {
-                Spatie.log("Chose new victim " + victim.name);
-            }
-
-            this.state.lastTimeVictimWasChosen = Date.now();
-        }
-
-        // always refresh victim object
-        this.state.victim = victim ? Players.get(victim.id) : null;
-    }
-
     private setFire(isFiring: boolean, stopFiringTimeout: number = null) {
         this.state.isFiring = isFiring;
         this.state.stopFiringTimeout = stopFiringTimeout;
     }
 
-    private setTurnMovement(turnMovement: string) {
-        this.state.turnMovement = turnMovement;
+    private setDesiredAngle(angle: number) {
+        // only accept a new angle if the previous one has been processed
+        // for now it's probably ok to just drop the new value: if it's really
+        // important, it will be set again.
+        if (isNaN(this.state.desiredAngle)) {
+            this.state.desiredAngle = angle;
+        }
     }
 
     private setSpeedMovement(speedMovement: string) {
@@ -772,24 +607,15 @@ class SpatieBot {
     }
 
     private turnTo(what: any) {
-        const delta = this.getDeltaTo(what);
+        const delta = Spatie.getDeltaTo(what);
 
         let targetDirection = Math.atan2(delta.diffX, delta.diffY);
         const pi = Math.atan2(0, -1);
         if (targetDirection < 0) {
             targetDirection = pi * 2 + targetDirection;
         }
-        let rotDiff = targetDirection - Players.getMe().rot;
 
-        let steerTo;
-        if (Math.abs(rotDiff) > this.config.precision) {
-            if (rotDiff > 0 && rotDiff <= pi) {
-                steerTo = "RIGHT";
-            } else {
-                steerTo = "LEFT";
-            }
-        }
-        this.setTurnMovement(steerTo);
+        this.setDesiredAngle(targetDirection);
     }
 
     private turnToVictim() {

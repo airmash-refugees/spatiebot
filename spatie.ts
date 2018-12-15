@@ -1,5 +1,6 @@
 declare var Players: any;
 declare var Network: any;
+declare var game: any;
 
 const Spatie = {
     announce: function (what: string) {
@@ -21,6 +22,55 @@ const Spatie = {
         sp.htmlDecodeHelper = sp.htmlDecodeHelper || document.createElement("textarea");
         sp.htmlDecodeHelper.innerHTML = html;
         return sp.htmlDecodeHelper.value;
+    },
+    getDeltaTo: function(what: any) {
+        what = what || this.state.victim;
+
+        // accuracy
+        let isAccurate = true;
+        let victimPos = what.pos;
+        if (what.lowResPos) {
+            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < 450;
+            victimPos = isAccurate ? victimPos : what.lowResPos;
+        }
+
+        const myPos = Players.getMe().pos;
+
+        const delta = {
+            ...Spatie.calcDiff(myPos, victimPos),
+            isAccurate: isAccurate
+        };
+
+        return delta;
+    },
+    getHostilePlayersSortedByDistance: function(excludeID: number = null) {
+        const allPlayers = Spatie.getPlayers();
+        const players = allPlayers.filter(p =>
+            p.team !== game.myTeam && p.id !== excludeID
+        );
+
+        players.sort((victimA, victimB) => {
+            const a = this.getDeltaTo(victimA);
+            const b = this.getDeltaTo(victimB);
+
+            if (a.isAccurate && !b.isAccurate) {
+                return -1;
+            }
+            if (!a.isAccurate && b.isAccurate) {
+                return 1;
+            }
+
+            if (a.distance < b.distance) {
+                return -1;
+            }
+            if (b.distance < a.distance) {
+                return 1;
+            }
+
+            return 0;
+        });
+
+        return players;
     },
     getPlayers: function () {
         const result = [];
@@ -51,4 +101,4 @@ const Spatie = {
     },
     shouldLog: false,
 };
-export {Spatie};
+export { Spatie };

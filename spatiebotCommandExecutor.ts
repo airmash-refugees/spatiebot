@@ -1,5 +1,6 @@
 declare var Network: any;
 declare var Players: any;
+declare var AutoPilot: any;
 
 import { SpatiebotState } from "./spatiebotState";
 import { BotConfig } from "./botConfigFactory";
@@ -18,10 +19,10 @@ class SpatiebotCommandExecutor {
         Network.sendKey("FIRE", false);
         Network.sendKey("SPECIAL", false);
     }
-    
+
     public executeCommands() {
 
-        const turnChanged = this.state.previousTurnMovement !== this.state.turnMovement;
+        const desiredAngleChanged = this.state.lastDesiredAngle !== this.state.desiredAngle;
         const movementChanged = this.state.previousSpeedMovement !== this.state.speedMovement;
         const throttleTimeElapsed = !this.state.nextMovementExec || Date.now() > this.state.nextMovementExec;
         const fireChanged = this.state.previousIsFiring !== this.state.isFiring;
@@ -36,7 +37,7 @@ class SpatiebotCommandExecutor {
             fastChanged = this.state.previousFast !== this.state.fast;
         }
 
-        if (throttleTimeElapsed || turnChanged || movementChanged || fastChanged || fireChanged || whompChanged) {
+        if (throttleTimeElapsed || desiredAngleChanged || movementChanged || fastChanged || fireChanged || whompChanged) {
 
             if (movementChanged) {
                 if (this.state.previousSpeedMovement) {
@@ -44,11 +45,8 @@ class SpatiebotCommandExecutor {
                 }
                 this.state.previousSpeedMovement = this.state.speedMovement;
             }
-            if (turnChanged) {
-                if (this.state.previousTurnMovement) {
-                    Network.sendKey(this.state.previousTurnMovement, false);
-                }
-                this.state.previousTurnMovement = this.state.turnMovement;
+            if (desiredAngleChanged) {
+                this.state.lastDesiredAngle = this.state.desiredAngle;
             }
             if (fastChanged) {
                 this.state.previousFast = this.state.fast;
@@ -56,9 +54,11 @@ class SpatiebotCommandExecutor {
             if (fireChanged) {
                 this.state.previousIsFiring = this.state.isFiring;
             }
-            if (this.state.turnMovement && (turnChanged || throttleTimeElapsed)) {
-                Network.sendKey(this.state.turnMovement, true);
+            if (!isNaN(this.state.desiredAngle) && (desiredAngleChanged || throttleTimeElapsed)) {
+                AutoPilot.rotateTo(this.state.desiredAngle, Players.getMe(), 0,
+                    () => this.state.desiredAngle = undefined); // as opposed to null, because NaN(null) === false
             }
+
             if (this.state.speedMovement && (movementChanged || throttleTimeElapsed)) {
                 Network.sendKey(this.state.speedMovement, true);
             }
