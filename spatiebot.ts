@@ -10,6 +10,7 @@ import { SpatiebotState } from "./spatiebotState";
 import { SpatiebotCommandExecutor } from "./spatiebotCommandExecutor";
 import { SpatiebotVictimSelection } from "./spatiebotVictimSelection";
 import { PlayerStat } from "./playerStat";
+import { BotNavigation } from "./botNavigation";
 
 const botConfigFactory = new BotConfigFactory();
 let lastConfiguration: BotConfig;
@@ -18,6 +19,7 @@ const upgradeInfo = {
     upgradeStats: <any>{}
 };
 const playerStats: PlayerStat[] = [];
+const botNavigation = new BotNavigation();
 
 class SpatieBot {
     private config: BotConfig;
@@ -49,7 +51,7 @@ class SpatieBot {
     }
 
     public goto(x: number, y: number) {
-        this.state.gotoCoords = { x, y};
+        this.state.gotoCoords = { x, y };
     }
 
     public initialize(config: BotConfig = null) {
@@ -572,7 +574,7 @@ class SpatieBot {
         } else if (this.state.detectedPowerUps && this.state.detectedPowerUps.length > 0) {
             this.state.name = "chase mob";
             this.approachMob();
-            this.detectStuckness();
+            // this.detectStuckness();
             this.detectShouldFlee();
         } else if (this.state.gotoCoords) {
             this.state.name = "go to coords";
@@ -581,7 +583,8 @@ class SpatieBot {
             this.detectShouldFlee();
         } else if (this.state.victim) {
             this.state.name = "chase victim " + this.state.victim.name;
-            this.turnToVictim();
+            this.findPathToVictim();
+            this.followPathDirection();
             this.approachVictim();
             this.fireAtVictim();
             this.detectVictimPowerUps();
@@ -603,6 +606,34 @@ class SpatieBot {
         this.detectAwayFromHome();
         this.detectDangerousObjects();
         this.commandExecutor.executeCommands();
+    }
+
+    findPathToVictim(): any {
+        if (this.state.pathToPoi.length > 1) {
+
+            // there is already a path being followed. See if the first direction can be removed
+            const delta = Spatie.calcDiff(Players.getMe().pos, this.state.pathToPoi[0]);
+            if (delta.distance < this.config.distanceClose) {
+                this.state.pathToPoi.shift();
+            }
+            return;
+        }
+
+        let lastCoord;
+        if (this.state.pathToPoi.length === 1) {
+            lastCoord = this.state.pathToPoi.pop();
+        }
+
+        let victimPos = Spatie.getPosition(this.state.victim);
+
+        const path = botNavigation.findPath(Players.getMe().pos, victimPos);
+        path.shift(); // my own position
+
+        if (lastCoord) {
+            path.unshift(lastCoord);
+        }
+
+        this.state.pathToPoi = path;
     }
 
     private detectAwayFromHome() {
@@ -679,13 +710,18 @@ class SpatieBot {
         this.setDesiredAngle(targetDirection);
     }
 
-    private turnToVictim() {
-        const victim = this.state.victim;
-        if (!victim) {
+    private followPathDirection() {
+        if (this.state.pathToPoi.length === 0) {
             return;
         }
 
-        this.turnTo(victim);
+        const nextPoi = {
+            pos: {
+                x: this.state.pathToPoi[0].x,
+                y: this.state.pathToPoi[0].y,
+            }
+        };
+        this.turnTo(nextPoi);
     }
 
 }

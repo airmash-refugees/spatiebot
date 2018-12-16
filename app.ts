@@ -16,8 +16,8 @@ function createNewBot() {
     const newBot = new SpatieBot();
 
     // expose to manipulating in the console
-    (<any>Window).Spatie = Spatie;
-    (<any>Window).SpatieBot = newBot;
+    (<any>window).Spatie = Spatie;
+    (<any>window).SpatieBot = newBot;
 
     return newBot;
 }

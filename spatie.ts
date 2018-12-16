@@ -27,21 +27,30 @@ const Spatie = {
         what = what || this.state.victim;
 
         // accuracy
-        let isAccurate = true;
-        let victimPos = what.pos;
-        if (what.lowResPos) {
-            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < 450;
-            victimPos = isAccurate ? victimPos : what.lowResPos;
-        }
-
+        let victimPos = Spatie.getPosition(what);
         const myPos = Players.getMe().pos;
 
         const delta = {
             ...Spatie.calcDiff(myPos, victimPos),
-            isAccurate: isAccurate
+            isAccurate: victimPos.isAccurate
         };
 
         return delta;
+    },
+    getPosition: function (what: any) {
+        // accuracy
+        let isAccurate = true;
+        let pos = what.pos;
+        if (what.lowResPos) {
+            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < 450;
+            pos = isAccurate ? pos : what.lowResPos;
+        }
+
+        return {
+            x: pos.x,
+            y: pos.y,
+            isAccurate
+        };
     },
     getHostilePlayersSortedByDistance: function (excludeID: number = null, includeIDs: number[] = null) {
         const allPlayers = Spatie.getPlayers();

@@ -1,11 +1,5 @@
-const CleanWebpackPlugin = require('clean-webpack-plugin');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
-
 module.exports = {
   entry: './app.ts',
-  plugins: [
-    //new CleanWebpackPlugin(['public/build'])
-  ],
   output: {
     path: __dirname,
     filename: 'spatiebot.js'
@@ -17,5 +11,7 @@ module.exports = {
     rules: [
       { loader: 'ts-loader' }
     ]
-  }
+  },
+  // mode: "development",
+  // optimization: { minimize: false}
 }
