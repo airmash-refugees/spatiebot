@@ -9,7 +9,7 @@ const Spatie = {
     },
     calcDiff: function (first: any, second: any) {
         const diffX = second.x - first.x;
-        const diffY = first.y - second.y;
+        const diffY = second.y - first.y;
         const distance = Math.sqrt(diffX * diffX + diffY * diffY);
         return {
             diffX,

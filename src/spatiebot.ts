@@ -10,7 +10,7 @@ import { SpatiebotState } from "./spatiebotState";
 import { SpatiebotCommandExecutor } from "./spatiebotCommandExecutor";
 import { SpatiebotVictimSelection } from "./spatiebotVictimSelection";
 import { PlayerStat } from "./playerStat";
-import { BotNavigation } from "./botNavigation";
+import { BotNavigationHub } from "./botNavigationHub";
 
 const botConfigFactory = new BotConfigFactory();
 let lastConfiguration: BotConfig;
@@ -19,7 +19,7 @@ const upgradeInfo = {
     upgradeStats: <any>{}
 };
 const playerStats: PlayerStat[] = [];
-const botNavigation = new BotNavigation();
+const botNavigationHub = new BotNavigationHub();
 
 class SpatieBot {
     private config: BotConfig;
@@ -145,6 +145,7 @@ class SpatieBot {
         } else if (this.state.victim && killedID === this.state.victim.id) {
             Spatie.log("Victim was killed, choosing another victim.");
             this.state.victim = null;
+            this.state.pathToVictim = [];
         }
     }
 
@@ -243,6 +244,8 @@ class SpatieBot {
         }
 
         if (closestPowerup) {
+            this.state.pathToVictim = [];
+
             this.turnTo(closestPowerup);
 
             if (closestPowerup.delta.distance > this.config.distanceTooClose) {
@@ -495,7 +498,7 @@ class SpatieBot {
             return;
         }
 
-        let directionToThing = Math.atan2(delta.diffX, delta.diffY);
+        let directionToThing = Math.atan2(delta.diffX, -delta.diffY);
         const pi = Math.atan2(0, -1);
         if (directionToThing < 0) {
             directionToThing = pi * 2 + directionToThing;
@@ -581,6 +584,9 @@ class SpatieBot {
             this.approachCoords();
             this.detectStuckness();
             this.detectShouldFlee();
+        } else if (this.state.isFindingPath) {
+            this.state.name = "finding path to victim";
+            // just wait
         } else if (this.state.victim) {
             this.state.name = "chase victim " + this.state.victim.name;
             this.findPathToVictim();
@@ -588,7 +594,7 @@ class SpatieBot {
             this.approachVictim();
             this.fireAtVictim();
             this.detectVictimPowerUps();
-            this.detectStuckness();
+            // this.detectStuckness();
             this.detectShouldFlee();
             this.detectFlagTaken();
             this.victimSelection.selectVictim();
@@ -609,31 +615,34 @@ class SpatieBot {
     }
 
     findPathToVictim(): any {
-        if (this.state.pathToPoi.length > 1) {
+        if (this.state.pathToVictim.length > 1) {
 
             // there is already a path being followed. See if the first direction can be removed
-            const delta = Spatie.calcDiff(Players.getMe().pos, this.state.pathToPoi[0]);
+            const delta = Spatie.calcDiff(Players.getMe().pos, this.state.pathToVictim[0]);
             if (delta.distance < this.config.distanceClose) {
-                this.state.pathToPoi.shift();
+                this.state.pathToVictim.shift();
             }
             return;
         }
 
         let lastCoord;
-        if (this.state.pathToPoi.length === 1) {
-            lastCoord = this.state.pathToPoi.pop();
+        if (this.state.pathToVictim.length === 1) {
+            lastCoord = this.state.pathToVictim.pop();
         }
 
         let victimPos = Spatie.getPosition(this.state.victim);
 
-        const path = botNavigation.findPath(Players.getMe().pos, victimPos);
-        path.shift(); // my own position
+        this.state.isFindingPath = true;
+        botNavigationHub.findPath(Players.getMe().pos, victimPos, (path) => {
+            this.state.isFindingPath = false;
+            path.shift(); // my own position
 
-        if (lastCoord) {
-            path.unshift(lastCoord);
-        }
+            if (lastCoord) {
+                path.unshift(lastCoord);
+            }
 
-        this.state.pathToPoi = path;
+            this.state.pathToVictim = path;
+        });
     }
 
     private detectAwayFromHome() {
@@ -701,7 +710,7 @@ class SpatieBot {
     private turnTo(what: any) {
         const delta = Spatie.getDeltaTo(what);
 
-        let targetDirection = Math.atan2(delta.diffX, delta.diffY);
+        let targetDirection = Math.atan2(delta.diffX, -delta.diffY);
         const pi = Math.atan2(0, -1);
         if (targetDirection < 0) {
             targetDirection = pi * 2 + targetDirection;
@@ -711,16 +720,14 @@ class SpatieBot {
     }
 
     private followPathDirection() {
-        if (this.state.pathToPoi.length === 0) {
+        if (this.state.pathToVictim.length === 0) {
             return;
         }
 
         const nextPoi = {
-            pos: {
-                x: this.state.pathToPoi[0].x,
-                y: this.state.pathToPoi[0].y,
-            }
+            pos: this.state.pathToVictim[0]
         };
+
         this.turnTo(nextPoi);
     }
 

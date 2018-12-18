@@ -35,6 +35,7 @@ class SpatiebotState {
     lastDesiredAngle: number;
     suggestingPlayerID: number;
     hasLockOnTarget: number;
-    pathToPoi: any[] = [];
+    pathToVictim: any[] = [];
+    isFindingPath: boolean;
 }
 export { SpatiebotState };

@@ -1,8 +1,11 @@
 module.exports = {
-  entry: './app.ts',
+  entry: {
+    spatiebot: './src/app.ts',
+    backgroundworker: './src/appworker.ts'
+  },
   output: {
     path: __dirname,
-    filename: 'spatiebot.js'
+    filename: '[name].js'
   },
   resolve: {
     extensions: ['.ts', '.js']
@@ -12,6 +15,21 @@ module.exports = {
       { loader: 'ts-loader' }
     ]
   },
-  // mode: "development",
-  // optimization: { minimize: false}
+  mode: "development",
+  optimization: { minimize: false },
+  plugins: [{
+    apply: (compiler) => {
+      compiler.hooks.afterEmit.tap('AfterEmitPlugin', (compilation) => {
+        const fs = require("fs");
+        const backgroundworker = fs.readFileSync("./backgroundworker.js", "utf8");
+        let buff = new Buffer(backgroundworker);  
+        let base64data = buff.toString('base64');
+        const workerBlobUrl = "data:text/javascript;base64," + base64data;
+
+        let spatiebot = fs.readFileSync("./spatiebot.js", "utf8");
+        spatiebot = spatiebot.replace(/__replace_with_blob__/, workerBlobUrl); 
+        require("fs").writeFileSync("./spatiebot.js", spatiebot);
+      });
+    }
+  }]
 }
