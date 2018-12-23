@@ -153,9 +153,12 @@ class SpatieBot {
             this.dispose();
             setTimeout(() => this.initialize(), this.config.respawnTimeout);
             if (useInsults) {
-                const insult = getInsult();
-                const playerName = Players.get(killerID).name;
-                Spatie.announce(playerName + ", you " + insult.toLocaleLowerCase() + "!");
+                const randNumber = Spatie.getRandomNumber(0, 4);
+                if (randNumber === 0) {
+                    const insult = getInsult();
+                    const playerName = Players.get(killerID).name;
+                    Spatie.announce(playerName + ", the " + insult.toLocaleLowerCase() + "!");
+                }
             }
         } else if (this.state.victim && killedID === this.state.victim.id) {
             Spatie.log("Victim was killed, choosing another victim.");
