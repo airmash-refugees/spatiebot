@@ -10,6 +10,8 @@ import { SpatiebotState } from "./spatiebotState";
 import { SpatiebotCommandExecutor } from "./spatiebotCommandExecutor";
 import { SpatiebotVictimSelection } from "./spatiebotVictimSelection";
 import { PlayerStat } from "./playerStat";
+import { BotNavigationHub } from "./botNavigationHub";
+import { getInsult } from "./insults";
 
 const botConfigFactory = new BotConfigFactory();
 let lastConfiguration: BotConfig;
@@ -23,6 +25,7 @@ class SpatieBot {
     private config: BotConfig;
     private state: SpatiebotState;
     private commandExecutor: SpatiebotCommandExecutor;
+    private botNavigationHub = new BotNavigationHub();
     private victimSelection: SpatiebotVictimSelection;
     public upgradeInfo = upgradeInfo;
 
@@ -41,15 +44,18 @@ class SpatieBot {
 
             clearInterval(this.state.heartbeatInterval);
             this.commandExecutor.clearCommands();
+            this.botNavigationHub.destroy();
 
             this.commandExecutor = null;
+            this.botNavigationHub = null;
+
             this.victimSelection = null;
             this.state = null;
         }
     }
 
     public goto(x: number, y: number) {
-        this.state.gotoCoords = { x, y};
+        this.state.gotoCoords = { x, y };
     }
 
     public initialize(config: BotConfig = null) {
@@ -67,6 +73,7 @@ class SpatieBot {
         this.state = new SpatiebotState();
         this.commandExecutor = new SpatiebotCommandExecutor(this.state, this.config);
         this.victimSelection = new SpatiebotVictimSelection(this.state, this.config, playerStats);
+        this.botNavigationHub = new BotNavigationHub();
 
         Spatie.log("Starting bot of type " + this.config.name);
 
@@ -83,7 +90,12 @@ class SpatieBot {
             return;
         }
 
-        Spatie.log(JSON.stringify(this.state));
+        try {
+            Spatie.log(JSON.stringify(this.state));
+        } catch (error) {
+            console.log(this.state);
+        }
+
     }
 
     public onHit(attackingPlayerID: number) {
@@ -131,7 +143,7 @@ class SpatieBot {
         }
     }
 
-    public onPlayerKilled(killedID: number, killerID: number) {
+    public onPlayerKilled(killedID: number, killerID: number, useInsults: boolean) {
         if (!this.isOn()) {
             return;
         }
@@ -140,9 +152,18 @@ class SpatieBot {
             Spatie.log("I was killed. Restarting.");
             this.dispose();
             setTimeout(() => this.initialize(), this.config.respawnTimeout);
+            if (useInsults) {
+                const randNumber = Spatie.getRandomNumber(0, 4);
+                if (randNumber === 0) {
+                    const insult = getInsult();
+                    const playerName = Players.get(killerID).name;
+                    Spatie.announce(playerName + ", the " + insult.toLocaleLowerCase() + "!");
+                }
+            }
         } else if (this.state.victim && killedID === this.state.victim.id) {
             Spatie.log("Victim was killed, choosing another victim.");
             this.state.victim = null;
+            this.state.pathToVictim = null;
         }
     }
 
@@ -226,30 +247,10 @@ class SpatieBot {
     }
 
     private approachMob() {
-
-        const powerups = [];
-        let closestPowerup;
-        for (var i = 0; i < this.state.detectedPowerUps.length; i++) {
-            var powerup = Mobs.get(this.state.detectedPowerUps[i]);
-            if (powerup) {
-                powerups.push(powerup.id);
-                powerup.delta = Spatie.getDeltaTo(powerup);
-                if (!closestPowerup || closestPowerup.delta.distance > powerup.delta.distance) {
-                    closestPowerup = powerup;
-                }
-            }
+        this.setSpeedMovement("UP");
+        if (this.state.mob.delta.distance > this.config.distanceTooClose) {
+            this.setFastMovement(true);
         }
-
-        if (closestPowerup) {
-            this.turnTo(closestPowerup);
-
-            if (closestPowerup.delta.distance > this.config.distanceTooClose) {
-                this.setFastMovement(true);
-            }
-            this.setSpeedMovement("UP");
-        }
-
-        this.state.detectedPowerUps = powerups;
     }
 
     private approachVictim() {
@@ -493,7 +494,7 @@ class SpatieBot {
             return;
         }
 
-        let directionToThing = Math.atan2(delta.diffX, delta.diffY);
+        let directionToThing = Math.atan2(delta.diffX, -delta.diffY);
         const pi = Math.atan2(0, -1);
         if (directionToThing < 0) {
             directionToThing = pi * 2 + directionToThing;
@@ -558,6 +559,7 @@ class SpatieBot {
 
     private heartbeat() {
         this.state.previous = this.state.name;
+
         if (this.state.isStuck) {
             this.state.name = "stuck";
             this.handleStuckness();
@@ -569,23 +571,39 @@ class SpatieBot {
             this.state.name = "low health flee";
             this.detectStuckness();
             this.handleFlee();
-        } else if (this.state.detectedPowerUps && this.state.detectedPowerUps.length > 0) {
-            this.state.name = "chase mob";
-            this.approachMob();
-            this.detectStuckness();
-            this.detectShouldFlee();
         } else if (this.state.gotoCoords) {
             this.state.name = "go to coords";
             this.approachCoords();
             this.detectStuckness();
             this.detectShouldFlee();
+        } else if (this.state.victim && this.state.startedFindingPathToVictim &&
+            (!this.state.pathToVictim || this.state.pathToVictim.length === 0)) {
+            this.state.name = "finding path to victim";
+            this.findPathToVictim();
+            this.temporaryMoveToVictim();
+            this.detectStuckness();
+            this.detectShouldFlee();
+        } else if (this.state.mob && this.state.startedFindingPathToMob &&
+            (!this.state.pathToMob || this.state.pathToMob.length === 0)) {
+            this.state.name = "finding path to mob";
+            this.findPathToMob();
+            this.temporaryMoveToMob();
+            this.detectStuckness();
+            this.detectShouldFlee();
+        } else if (this.state.mob) {
+            this.state.name = "chase mob";
+            this.findPathToMob();
+            this.followPathDirectionToMob();
+            this.approachMob();
+            this.detectShouldFlee();
         } else if (this.state.victim) {
             this.state.name = "chase victim " + this.state.victim.name;
-            this.turnToVictim();
+            this.findPathToVictim();
+            this.followPathDirectionToVictim();
             this.approachVictim();
             this.fireAtVictim();
             this.detectVictimPowerUps();
-            this.detectStuckness();
+            // this.detectStuckness();
             this.detectShouldFlee();
             this.detectFlagTaken();
             this.victimSelection.selectVictim();
@@ -603,7 +621,94 @@ class SpatieBot {
         this.detectAwayFromHome();
         this.detectDangerousObjects();
         this.commandExecutor.executeCommands();
+        this.detectMobs();
+
     }
+
+    // while finding path, do a simple move to victim
+    private temporaryMoveToVictim(): any {
+        if (this.state.victim) {
+            this.turnTo(this.state.victim);
+            this.approachVictim();
+        }
+    }
+
+    // while finding path, do a simple move to victim
+    private temporaryMoveToMob(): any {
+        if (this.state.mob) {
+            this.turnTo(this.state.mob);
+            this.approachMob();
+        }
+    }
+
+    detectMobs(): any {
+        if (!this.state.detectedPowerUps || this.state.detectedPowerUps.length === 0) {
+            return;
+        }
+
+        // find closest, and cleanup the detectedPowerups array in the process
+        const powerups = [];
+        let closestPowerup;
+        for (var i = 0; i < this.state.detectedPowerUps.length; i++) {
+            var powerup = Mobs.get(this.state.detectedPowerUps[i]);
+            if (powerup) {
+                powerups.push(powerup.id);
+                powerup.delta = Spatie.getDeltaTo(powerup);
+                if (powerup.delta.distance <= this.config.distanceFar * 2) {
+                    if (!closestPowerup || closestPowerup.delta.distance > powerup.delta.distance) {
+                        closestPowerup = powerup;
+                    }
+                }
+            }
+        }
+
+        this.state.mob = closestPowerup;
+        this.state.detectedPowerUps = powerups;
+    }
+
+    private findPathToVictim(): void {
+        if (this.state.startedFindingPathToVictim && Date.now() - this.state.startedFindingPathToVictim < 3000) {
+            return;
+        }
+
+        let victimPos = Spatie.getPosition(this.state.victim);
+
+        this.state.startedFindingPathToVictim = Date.now();
+        this.botNavigationHub.findPath(Players.getMe().pos, victimPos, (path) => {
+            this.state.startedFindingPathToVictim = null;
+            path.shift(); // my own position
+            this.state.pathToVictim = path;
+        }, (error) => {
+            this.state.startedFindingPathToVictim = null;
+            this.state.pathToVictim = null;
+            this.botNavigationHub.destroy();
+            this.botNavigationHub = new BotNavigationHub();
+        });
+    }
+
+    private findPathToMob() {
+        if (this.state.startedFindingPathToMob && Date.now() - this.state.startedFindingPathToMob < 3000) {
+            return;
+        }
+
+        this.state.pathToVictim = null;
+        this.state.startedFindingPathToVictim = null;
+
+        let mobPos = Spatie.getPosition(this.state.mob);
+
+        this.state.startedFindingPathToMob = Date.now();
+        this.botNavigationHub.findPath(Players.getMe().pos, mobPos, (path) => {
+            this.state.startedFindingPathToMob = null;
+            path.shift(); // my own position
+            this.state.pathToMob = path;
+        }, (error) => {
+            this.state.startedFindingPathToMob = null;
+            this.state.pathToMob = null;
+            this.botNavigationHub.destroy();
+            this.botNavigationHub = new BotNavigationHub();
+        });
+    }
+
 
     private detectAwayFromHome() {
         if (!this.config.protectHomeBase) {
@@ -670,7 +775,7 @@ class SpatieBot {
     private turnTo(what: any) {
         const delta = Spatie.getDeltaTo(what);
 
-        let targetDirection = Math.atan2(delta.diffX, delta.diffY);
+        let targetDirection = Math.atan2(delta.diffX, -delta.diffY);
         const pi = Math.atan2(0, -1);
         if (targetDirection < 0) {
             targetDirection = pi * 2 + targetDirection;
@@ -679,15 +784,29 @@ class SpatieBot {
         this.setDesiredAngle(targetDirection);
     }
 
-    private turnToVictim() {
-        const victim = this.state.victim;
-        if (!victim) {
+    private followPathDirectionToVictim() {
+        if (!this.state.pathToVictim || this.state.pathToVictim.length === 0) {
             return;
         }
 
-        this.turnTo(victim);
+        const nextPoi = {
+            pos: this.state.pathToVictim[0]
+        };
+
+        this.turnTo(nextPoi);
     }
 
+    private followPathDirectionToMob() {
+        if (!this.state.pathToMob || this.state.pathToMob.length === 0) {
+            return;
+        }
+
+        const nextPoi = {
+            pos: this.state.pathToMob[0]
+        };
+
+        this.turnTo(nextPoi);
+    }
 }
 
 export { SpatieBot };
