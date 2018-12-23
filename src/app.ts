@@ -12,6 +12,7 @@ function spatiebotInitializer() {
     let currentBot: SpatieBot = null;
     let limitUpdates: boolean = false;
     let toggleKey: string = "b";
+    let logChat: boolean = false;
 
     function createNewBot() {
         const newBot = new SpatieBot();
@@ -28,28 +29,31 @@ function spatiebotInitializer() {
         function onApply(values: any) {
             limitUpdates = values.limitUpdates;
             toggleKey = values.toggleKey;
+            logChat = values.logChat;
         }
 
         // default values for the settings
         let defaultValues = {
             limitUpdates: false,
             toggleKey: "b",
+            logChat: false
         };
 
         let sp = new SettingsProvider(defaultValues, onApply);
         let section = sp.addSection("SpatieBot settings");
         section.addBoolean("limitUpdates", "Don't update screen when window doesn't have focus (for hosting many bots)");
+        section.addBoolean("logChat", "Log chat to console");
         section.addString("toggleKey", "Key to press to toggle the bot", { maxLength: 1 });
 
         return sp;
     }
 
     SWAM.registerExtension({
-        name: "SpatieBot 3.1",
-        id: "spatie02",
+        name: "SpatieBot 4.0",
+        id: "spatie04",
         description: "Runs one bot",
         author: "Spatie",
-        version: "3.1",
+        version: "4.0",
         settingsProvider: createSettingsProvider(),
     });
 
@@ -133,7 +137,10 @@ function spatiebotInitializer() {
     });
 
     SWAM.on("chatLineAdded", function (player: any, text: any, type: any) {
-        console.log(player.name + ": " + text);
+        if (logChat) {
+            console.log(player.name + ": " + text);
+        }
+
         if (currentBot) {
             if (text === "-sb-bond") {
                 // bond with all other players with 'Bot 'in their names during 3 lives

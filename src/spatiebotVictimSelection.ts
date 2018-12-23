@@ -48,15 +48,17 @@ class SpatiebotVictimSelection {
         // choose a new victim if no victim selected
         victim = victim || this.chooseNextVictim();
 
-        const changedTarget = this.isSamePlayer(currentVictim, victim);
+        const changedTarget = !this.isSamePlayer(currentVictim, victim);
 
         if (changedTarget) {
             if (currentVictim) {
                 Spatie.log("Dropped victim " + currentVictim.name);
             }
+
             if (victim) {
                 Spatie.log("Chose new victim " + victim.name);
                 this.state.lastTimeVictimWasChosen = Date.now();
+                this.state.pathToVictim = null;
             }
 
             if (!victim || this.state.hasLockOnTarget !== victim.id) {
@@ -76,7 +78,6 @@ class SpatiebotVictimSelection {
 
         // always refresh victim object
         this.state.victim = victim ? Players.get(victim.id) : null;
-
     }
 
     private isSamePlayer(a: any, b: any): boolean {
@@ -93,40 +94,66 @@ class SpatiebotVictimSelection {
     private getBestVictim() {
         // always choose flag carrier as victim if there is one
         const flagCarrier = this.targetFlagCarrier();
-        if (flagCarrier) {
-            return Players.get(this.state.flagCarrierID);
+        if (flagCarrier && this.isVictimValid(flagCarrier)) {
+            return flagCarrier;
         }
 
         // use the suggested target
         const suggested = this.takeOverSuggestion();
-        if (suggested) {
+        if (suggested && this.isVictimValid(suggested)) {
+            Spatie.log("Take over suggested");
             return suggested;
         }
 
         // get the currently selected victim
         const victim = this.state.victim;
-        if (victim && this.isVictimValid(victim)) {
 
-            // if this victim is the locked target, don't reconsider here
-            if (this.state.hasLockOnTarget === victim.id) {
-                return victim;
-            }
+        if (!victim) {
+            return;
+        }
 
-            // otherwise, find a target that is closer by
-            const closerBy = this.findVictimCloserByThan(victim);
-            if (closerBy) {
-                return closerBy;
-            }
+        if (!this.isVictimValid(victim)) {
+            // drop victim, take another ones
+            Spatie.log("Victim not active, or prowler, or spactating, or expired, or immune");
+            return null;
+        }
 
+        // if this victim is the locked target, don't reconsider here
+        if (this.state.hasLockOnTarget === victim.id) {
             return victim;
         }
 
-        return null;
+        // otherwise, find a target that is closer by
+        const closerBy = this.findVictimCloserByThan(victim);
+        if (closerBy) {
+            return closerBy;
+        }
+
+        return victim;
+    }
+
+    private getClosestValidPlayer() {
+        const players = Spatie.getHostilePlayersSortedByDistance();
+
+        let index = 0;
+        while (true) {
+            const closestHostilePlayer = players[index];
+
+            if (!closestHostilePlayer) {
+                return null;
+            }
+
+            if (this.isVictimValid(closestHostilePlayer)) {
+                return closestHostilePlayer;
+            }
+
+            index++;
+        }
     }
 
     private findVictimCloserByThan(currentVictim: any) {
         // if there are other players closer by, consider chasing them
-        const closestHostilePlayer = Spatie.getHostilePlayersSortedByDistance()[0];
+        const closestHostilePlayer = this.getClosestValidPlayer();
         if (closestHostilePlayer.id !== currentVictim.id) {
             const victimDistance = Spatie.getDeltaTo(currentVictim);
             const closestPlayerDistance = Spatie.getDeltaTo(closestHostilePlayer);
@@ -134,9 +161,8 @@ class SpatiebotVictimSelection {
             let shouldSwitch;
             if (!closestPlayerDistance.isAccurate || victimDistance.distance < this.config.distanceClose) {
                 shouldSwitch = false;
-            } else if (closestPlayerDistance.isAccurate && !victimDistance.isAccurate) {
-                shouldSwitch = true;
-            } else if (closestPlayerDistance.distance / victimDistance.distance < 0.5) {
+            } else if (closestPlayerDistance.distance / victimDistance.distance < 0.2) {
+                Spatie.log("switch: " + closestHostilePlayer.name + " is way closer");
                 shouldSwitch = true;
             }
 

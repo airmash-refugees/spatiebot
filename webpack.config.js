@@ -20,6 +20,8 @@ module.exports = {
   plugins: [{
     apply: (compiler) => {
       compiler.hooks.afterEmit.tap('AfterEmitPlugin', (compilation) => {
+        // integrate the backgroundworker as base64 encoded data-url in the spatiebot
+
         const fs = require("fs");
         const backgroundworker = fs.readFileSync("./backgroundworker.js", "utf8");
         let buff = new Buffer(backgroundworker);  

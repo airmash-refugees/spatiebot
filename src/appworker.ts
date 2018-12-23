@@ -7,20 +7,24 @@ onmessage = function (event: any) {
 
     const pm = <any>self.postMessage;  // typescript binding is not helping here
 
-    if (action === "findPath") {
-        const myPos = args[1];
-        const otherPos = args[2];
+    try {
 
-        try {
+        if (action === "findPath") {
+            const myPos = args[1];
+            const otherPos = args[2];
             const path = botNavigation.findPath(myPos, otherPos);
+
+            // callback
             pm(["findPath", path]);
-        } catch (err) {
-            pm(["ERROR", JSON.stringify(err, Object.getOwnPropertyNames(err))]);
+        } else if (action === "setMountains") {
+            const mountains = args[1];
+            botNavigation.setMountains(mountains);
+            pm(["READY"]);
+        } else {
+            pm(["ERROR", "unknown action " + action]);
         }
-    } else if (action === "setMountains") {
-        const mountains = args[1];
-        botNavigation.setMountains(mountains);
-    } else {
-        pm(["ERROR", "unknown action " + action]);
+    } catch (err) {
+        pm(["LOG", "error!", err.message]);
+        pm(["ERROR"]);
     }
 };

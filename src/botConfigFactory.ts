@@ -148,7 +148,7 @@ class BotConfigFactory {
 
         switch (type) {
             case 1:
-                return this.agressiveBotConfig;
+                return this.normalBotConfig;
             case 2:
                 return this.goliathBotConfig;
             case 3:

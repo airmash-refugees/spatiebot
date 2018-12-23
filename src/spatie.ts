@@ -42,7 +42,7 @@ const Spatie = {
         let isAccurate = true;
         let pos = what.pos;
         if (what.lowResPos) {
-            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < 450;
+            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < 550;
             pos = isAccurate ? pos : what.lowResPos;
         }
 
@@ -98,16 +98,33 @@ const Spatie = {
         return lower + Math.floor(Math.random() * (upper - lower));
     },
     log: function (what: string) {
+        const sp = <any>Spatie;
         if (Spatie.shouldLog) {
-            const sp = <any>Spatie;
             if (!sp.logger) {
-                sp.logger = document.createElement("textarea");
+                sp.logger = document.createElement("div");
                 document.body.appendChild(sp.logger);
-                sp.logger.style = "position: absolute; top: 1px; left: 1px;";
+                sp.logger.style = "position: absolute; top: 50px; left: 300px; color: white: width: 600px; height: 500px; overflow: scroll";
             }
-            sp.logger.innerHTML = what + "\n" + sp.logger.innerHTML;
+            const line = document.createElement("div");
+            line.innerText = what;
+            sp.logger.insertBefore(line, sp.logger.firstChild);
+
+            if (sp.logger.childElementCount > 100) {
+                sp.logger.removeChild(sp.logger.lastChild);
+            }
+
+        } else {
+            if (sp.logger) {
+                document.body.removeChild(sp.logger);
+                sp.logger = null;
+            }
         }
+        if (Spatie.shouldLogToConsole) {
+            console.log(what);
+        }
+
     },
     shouldLog: false,
+    shouldLogToConsole: false,
 };
 export { Spatie };

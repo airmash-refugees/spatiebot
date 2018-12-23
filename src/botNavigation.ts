@@ -1,7 +1,7 @@
 import { Grid, BestFirstFinder, Util } from "pathfinding";
 
 const navConfig = {
-    // map is -16352 to 16352 in the x direction and -8160 to 8160 in the y-direction
+    // map is -16352 to 16352 in the x direction and -8160 to 8160 in the y-direction 
     mapProperties: { left: -16352, top: -8160, right: 16352, bottom: 8160 },
     mountainWidth: 175,
     maxGridLength: 2500,
@@ -11,7 +11,7 @@ const navConfig = {
 class BotNavigation {
     private mountains;
 
-    setMountains(mountains: { x: number, y: number, scale: number}[]): void {
+    setMountains(mountains: { x: number, y: number, scale: number }[]): void {
         this.mountains = mountains;
     }
 
@@ -49,7 +49,19 @@ class BotNavigation {
         return grid;
     }
 
+    private isValid(pos: { x: number, y: number }): boolean {
+        const margin = 32;
+        return pos.x > navConfig.mapProperties.left + margin &&
+            pos.x < navConfig.mapProperties.right - margin &&
+            pos.y > navConfig.mapProperties.top + margin &&
+            pos.y < navConfig.mapProperties.bottom - margin;
+    }
+
     public findPath(myPos: { x: number, y: number }, otherPos: { x: number, y: number }, margin: number = 0) {
+
+        if (!this.isValid(myPos) || !this.isValid(otherPos)) {
+            return [];
+        }
 
         const halvarin = margin / 2;
 
@@ -58,7 +70,7 @@ class BotNavigation {
         if (otherPos.x > myPos.x) {
             gridLeft = myPos.x - halvarin;
         } else {
-            gridLeft = myPos.x - gridWidth + halvarin;
+            gridLeft = myPos.x - gridWidth + 1 + halvarin;
         }
 
         let gridTop: number;
@@ -66,7 +78,7 @@ class BotNavigation {
         if (otherPos.y > myPos.y) {
             gridTop = myPos.y - halvarin;
         } else {
-            gridTop = myPos.y - gridHeight + halvarin;
+            gridTop = myPos.y - gridHeight + 1 + halvarin;
         }
 
         // get grid with mountains
