@@ -161,6 +161,9 @@ class SpatiebotVictimSelection {
             let shouldSwitch;
             if (!closestPlayerDistance.isAccurate || victimDistance.distance < this.config.distanceClose) {
                 shouldSwitch = false;
+            } else if (closestPlayerDistance.isAccurate && !victimDistance.isAccurate) {
+                Spatie.log("switch: " + closestHostilePlayer.name + " is more accurate");
+                shouldSwitch = true;
             } else if (closestPlayerDistance.distance / victimDistance.distance < 0.2) {
                 Spatie.log("switch: " + closestHostilePlayer.name + " is way closer");
                 shouldSwitch = true;

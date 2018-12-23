@@ -80,7 +80,6 @@ class SpatiebotCommandExecutor {
             }
 
             if (fireChanged || throttleTimeElapsed) {
-                console.log("Firing? " + this.state.isFiring);
                 let fireKey = "FIRE";
                 if (this.config.useSpecial === "FIRE") {
                     fireKey = "SPECIAL";
@@ -88,7 +87,7 @@ class SpatiebotCommandExecutor {
 
                 if (this.state.isFiring) {
                     if (!this.state.fireTimeout) {
-                        const stopFiringTimeout = this.state.stopFiringTimeout || 1000;
+                        const stopFiringTimeout = this.state.stopFiringTimeout || 1200;
                         Network.sendKey(fireKey, true);
 
                         // don't turn the firebutton off if fireConstantly is on

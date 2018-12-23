@@ -42,7 +42,7 @@ const Spatie = {
         let isAccurate = true;
         let pos = what.pos;
         if (what.lowResPos) {
-            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < 550;
+            isAccurate = Spatie.calcDiff(what.lowResPos, what.pos).distance < 900;
             pos = isAccurate ? pos : what.lowResPos;
         }
 

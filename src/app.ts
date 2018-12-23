@@ -13,6 +13,7 @@ function spatiebotInitializer() {
     let limitUpdates: boolean = false;
     let toggleKey: string = "b";
     let logChat: boolean = false;
+    let useInsults: boolean = false;
 
     function createNewBot() {
         const newBot = new SpatieBot();
@@ -30,30 +31,33 @@ function spatiebotInitializer() {
             limitUpdates = values.limitUpdates;
             toggleKey = values.toggleKey;
             logChat = values.logChat;
+            useInsults = values.useInsults;
         }
 
         // default values for the settings
         let defaultValues = {
             limitUpdates: false,
             toggleKey: "b",
-            logChat: false
+            logChat: false,
+            useInsults: false,
         };
 
         let sp = new SettingsProvider(defaultValues, onApply);
         let section = sp.addSection("SpatieBot settings");
         section.addBoolean("limitUpdates", "Don't update screen when window doesn't have focus (for hosting many bots)");
         section.addBoolean("logChat", "Log chat to console");
+        section.addBoolean("useInsults", "Insult anyone killing this bot");
         section.addString("toggleKey", "Key to press to toggle the bot", { maxLength: 1 });
 
         return sp;
     }
 
     SWAM.registerExtension({
-        name: "SpatieBot 4.0",
-        id: "spatie04",
+        name: "SpatieBot 4.1",
+        id: "spatie041",
         description: "Runs one bot",
         author: "Spatie",
-        version: "4.0",
+        version: "4.1",
         settingsProvider: createSettingsProvider(),
     });
 
@@ -132,7 +136,7 @@ function spatiebotInitializer() {
 
     SWAM.on("playerKilled", function (data: any, dead: any, killer: any) {
         if (currentBot) {
-            currentBot.onPlayerKilled(dead.id, killer.id);
+            currentBot.onPlayerKilled(dead.id, killer.id, useInsults);
         }
     });
 
