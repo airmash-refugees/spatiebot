@@ -4,6 +4,7 @@ declare const UI: any;
 declare const Graphics: any;
 declare const SettingsProvider: any;
 declare const game: any;
+declare const Players: any;
 
 import { Spatie } from "./spatie";
 import { SpatieBot } from "./spatiebot";
@@ -46,18 +47,18 @@ function spatiebotInitializer() {
         let section = sp.addSection("SpatieBot settings");
         section.addBoolean("limitUpdates", "Don't update screen when window doesn't have focus (for hosting many bots)");
         section.addBoolean("logChat", "Log chat to console");
-        section.addBoolean("useInsults", "Insult anyone killing this bot");
+        section.addBoolean("useInsults", "Insult 1 of 4 killing this bot");
         section.addString("toggleKey", "Key to press to toggle the bot", { maxLength: 1 });
 
         return sp;
     }
 
     SWAM.registerExtension({
-        name: "SpatieBot 4.1",
-        id: "spatie041",
+        name: "SpatieBot 4.2",
+        id: "spatie042",
         description: "Runs one bot",
         author: "Spatie",
-        version: "4.1",
+        version: "4.2",
         settingsProvider: createSettingsProvider(),
     });
 
@@ -152,8 +153,8 @@ function spatiebotInitializer() {
             } else if (text === "-sb-target") {
                 currentBot.announceTarget();
             } else {
-                const re = /-sb-suggest[: ]+(.*)/;
-                const suggestionMatch = re.exec(text);
+                const suggestionRe = /-sb-suggest[: ]+(.*)/;
+                const suggestionMatch = suggestionRe.exec(text);
                 if (suggestionMatch) {
                     const suggestedVictim = suggestionMatch[1];
                     currentBot.suggestVictim(player.id, suggestedVictim);
@@ -167,6 +168,7 @@ function spatiebotInitializer() {
             }
         }
     });
+
 }
 
 spatiebotInitializer();

@@ -8,6 +8,8 @@ import { Spatie } from "./spatie";
 
 class SpatiebotCommandExecutor {
 
+    private networkSendKey = Network.sendKey;
+
     constructor(private state: SpatiebotState, private config: BotConfig) {
     }
 
@@ -20,11 +22,34 @@ class SpatiebotCommandExecutor {
         Network.sendKey("SPECIAL", false);
     }
 
+    private isThrottleTimeElapsedFor(what: string): boolean {
+        return !this.state.nextMovementExec[what] || Date.now() > this.state.nextMovementExec[what];
+    }
+
+    private setThrottleTimeFor(what: string) : void {
+        this.state.nextMovementExec[what] = Date.now() + this.config.throttleInterval;
+    }
+
+    private isAnyThrottleTimeElapsed(): boolean {
+        if (!this.state.nextMovementExec) {
+            return true;
+        }
+        for (const p of this.state.nextMovementExec) {
+            if (this.isThrottleTimeElapsedFor(p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public executeCommands() {
+
+        if (!this.state.nextMovementExec) {
+            this.state.nextMovementExec = {};
+        }
 
         const desiredAngleChanged = this.state.lastDesiredAngle !== this.state.desiredAngle;
         const movementChanged = this.state.previousSpeedMovement !== this.state.speedMovement;
-        const throttleTimeElapsed = !this.state.nextMovementExec || Date.now() > this.state.nextMovementExec;
         const fireChanged = this.state.previousIsFiring !== this.state.isFiring;
 
         let whompChanged;
@@ -37,7 +62,7 @@ class SpatiebotCommandExecutor {
             fastChanged = this.state.previousFast !== this.state.fast;
         }
 
-        if (throttleTimeElapsed || desiredAngleChanged || movementChanged || fastChanged || fireChanged || whompChanged) {
+        if (desiredAngleChanged || movementChanged || fastChanged || fireChanged || whompChanged || this.isAnyThrottleTimeElapsed()) {
 
             if (movementChanged) {
                 if (this.state.previousSpeedMovement) {
@@ -54,17 +79,18 @@ class SpatiebotCommandExecutor {
             if (fireChanged) {
                 this.state.previousIsFiring = this.state.isFiring;
             }
-            if (!isNaN(this.state.desiredAngle) && (desiredAngleChanged || throttleTimeElapsed)) {
-                AutoPilot.rotateTo(this.state.desiredAngle, Players.getMe(), 0,
-                    () => this.state.desiredAngle = undefined); // as opposed to null, because NaN(null) === false
+            if (!isNaN(this.state.desiredAngle) && (desiredAngleChanged || this.isThrottleTimeElapsedFor("angle"))) {
+                this.turnToDesiredAngle();
+                this.setThrottleTimeFor("angle");
             }
 
-            if (this.state.speedMovement && (movementChanged || throttleTimeElapsed)) {
+            if (this.state.speedMovement && (movementChanged || this.isThrottleTimeElapsedFor("movement"))) {
                 Network.sendKey(this.state.speedMovement, true);
+                this.setThrottleTimeFor("movement");
             }
 
             if (this.config.useSpecial === "SPEED") {
-                if (fastChanged || throttleTimeElapsed) {
+                if (fastChanged || this.isThrottleTimeElapsedFor("fast")) {
                     if (this.state.fast) {
                         if (!this.state.fastTimeout) {
                             Network.sendKey("SPECIAL", true);
@@ -76,31 +102,34 @@ class SpatiebotCommandExecutor {
                     } else {
                         Network.sendKey("SPECIAL", false);
                     }
+                    this.setThrottleTimeFor("fast");
                 }
             }
 
-            if (fireChanged || throttleTimeElapsed) {
+            if (fireChanged || this.isThrottleTimeElapsedFor("fire")) {
                 let fireKey = "FIRE";
                 if (this.config.useSpecial === "FIRE") {
                     fireKey = "SPECIAL";
                 }
 
                 if (this.state.isFiring) {
-                    if (!this.state.fireTimeout) {
-                        const stopFiringTimeout = this.state.stopFiringTimeout || 1200;
-                        Network.sendKey(fireKey, true);
+                    Network.sendKey(fireKey, true);
 
-                        // don't turn the firebutton off if fireConstantly is on
-                        if (!this.config.fireConstantly) {
+                    // don't turn the firebutton off if fireConstantly is on
+                    if (!this.config.fireConstantly) {
+                        if (!this.state.fireTimeout) {
+                            const stopFiringTimeout = this.state.stopFiringTimeout || 1200;
                             this.state.fireTimeout = setTimeout(() => {
                                 this.state.fireTimeout = null;
                                 Network.sendKey(fireKey, false);
+                                this.state.isFiring = false;
                             }, stopFiringTimeout);
                         }
                     }
                 } else {
                     Network.sendKey(fireKey, false);
                 }
+                this.setThrottleTimeFor("fire");
             }
 
             // don't repeat following special commands on throttle elapsed, because they work one time only
@@ -121,8 +150,46 @@ class SpatiebotCommandExecutor {
                 Network.sendKey("SPECIAL", true);
                 setTimeout(() => Network.sendKey("SPECIAL", false), 100);
             }
+        }
+    }
 
-            this.state.nextMovementExec = Date.now() + this.config.throttleInterval;
+    private turnToDesiredAngle() {
+        const myRot = Players.getMe().rot;
+        const desRot = this.state.desiredAngle;
+        const rotDiff = Math.abs(myRot - desRot);
+        if (rotDiff > this.config.precision) {
+            const pi = Math.atan2(0, -1);
+            let direction;
+            if (myRot > desRot) {
+                if (rotDiff > pi) {
+                    direction = "RIGHT";
+                } else {
+                    direction = "LEFT";
+                }
+            } else if (myRot < desRot) {
+                if (rotDiff > pi) {
+                    direction = "LEFT";
+                } else {
+                    direction = "RIGHT";
+                }
+            }
+            if (this.state.angleInterval) {
+                clearInterval(this.state.angleInterval);
+            }
+            Network.sendKey(direction === "LEFT" ? "RIGHT" : "LEFT", false);
+            Network.sendKey(direction, true);
+            const myInterval = setInterval(() => {
+                // stop when desired angle has been reached
+                const desRot2 = this.state.desiredAngle;
+                const myRot2 = Players.getMe().rot;
+                const rotDiff = Math.abs(myRot2 - desRot2);
+                if (rotDiff <= this.config.precision) {
+                    clearInterval(myInterval);
+                    Network.sendKey(direction, false);
+                    this.state.desiredAngle = undefined; // as opposed to null, because NaN(null) === false
+                }
+            }, 50);
+            this.state.angleInterval = myInterval;
         }
     }
 }

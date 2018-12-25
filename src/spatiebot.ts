@@ -63,6 +63,11 @@ class SpatieBot {
             return;
         }
 
+        if (lastConfiguration && lastConfiguration.aircraftType !== Players.getMe().type) {
+            // not compatible with current aircraft
+            lastConfiguration = null;
+        }
+
         config = config ||
             lastConfiguration ||
             botConfigFactory.getConfigByAircraftType(Players.getMe().type);
@@ -152,12 +157,13 @@ class SpatieBot {
             Spatie.log("I was killed. Restarting.");
             this.dispose();
             setTimeout(() => this.initialize(), this.config.respawnTimeout);
+
             if (useInsults) {
-                const randNumber = Spatie.getRandomNumber(0, 4);
+                const randNumber = Spatie.getRandomNumber(0, 3);
                 if (randNumber === 0) {
-                    const insult = getInsult();
                     const playerName = Players.get(killerID).name;
-                    Spatie.announce(playerName + ", the " + insult.toLocaleLowerCase() + "!");
+                    const insult = getInsult();
+                    Spatie.announce(playerName + ", you " + insult.toLocaleLowerCase());
                 }
             }
         } else if (this.state.victim && killedID === this.state.victim.id) {
@@ -381,6 +387,10 @@ class SpatieBot {
                 }
             }
         }
+
+        if (this.state.objectToFleeFromID) {
+            this.clearPathFinding();
+        }
     }
 
     private detectShouldFlee() {
@@ -389,6 +399,7 @@ class SpatieBot {
         }
         if (Players.getMe().health < this.config.fleeHealthThresholdMin) {
             this.state.isFleeing = true;
+            this.clearPathFinding();
         }
     }
 
@@ -414,6 +425,9 @@ class SpatieBot {
             if (stucknessElapsed) {
                 this.state.stucknessTimeout = null;
                 this.state.isStuck = true;
+
+                this.clearPathFinding();
+
                 const durationRandomness = Spatie.getRandomNumber(0, 250);
                 this.state.stuckTimeStopTurning = Date.now() + this.config.stucknessTurnDurationMs - durationRandomness;
                 this.state.stuckTimeStopFlying = Date.now() + this.config.stucknessFlyDurationMs + durationRandomness;
@@ -549,6 +563,13 @@ class SpatieBot {
         }
     }
 
+    private clearPathFinding() {
+        this.state.pathToMob = null;
+        this.state.pathToVictim = null;
+        this.state.startedFindingPathToMob = null;
+        this.state.startedFindingPathToVictim = null;
+    }
+
     private hasRampage() {
         return Players.getMe().powerups.rampage;
     }
@@ -662,11 +683,19 @@ class SpatieBot {
             }
         }
 
+        if (closestPowerup !== this.state.mob) {
+            this.clearPathFinding();
+        }
+
         this.state.mob = closestPowerup;
         this.state.detectedPowerUps = powerups;
     }
 
     private findPathToVictim(): void {
+        if (!this.botNavigationHub.isReady) {
+            return;
+        }
+
         if (this.state.startedFindingPathToVictim && Date.now() - this.state.startedFindingPathToVictim < 3000) {
             return;
         }
@@ -752,12 +781,7 @@ class SpatieBot {
     }
 
     private setDesiredAngle(angle: number) {
-        // only accept a new angle if the previous one has been processed
-        // for now it's probably ok to just drop the new value: if it's really
-        // important, it will be set again.
-        if (isNaN(this.state.desiredAngle)) {
-            this.state.desiredAngle = angle;
-        }
+        this.state.desiredAngle = angle;
     }
 
     private setSpeedMovement(speedMovement: string) {

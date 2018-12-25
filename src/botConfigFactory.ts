@@ -24,6 +24,7 @@ class BotConfig {
     useSpecial: string;
     useStealth: boolean;
     victimExpireMs: number;
+    aircraftType: number;
 }
 
 class BotConfigFactory {
@@ -53,6 +54,7 @@ class BotConfigFactory {
         useSpecial: "SPEED",
         useStealth: false,
         victimExpireMs: 120 * 1000,
+        aircraftType: 1
     };
 
     private readonly squareProtectingBotConfig: BotConfig = {
@@ -89,6 +91,7 @@ class BotConfigFactory {
             fleeHealthThresholdMax: 0.9,
             name: "copter",
             useSpecial: null,
+            aircraftType: 3
         }
     };
 
@@ -101,6 +104,7 @@ class BotConfigFactory {
             fleeHealthThresholdMax: 0.9,
             name: "tornado",
             useSpecial: "FIRE",
+            aircraftType: 4
         }
     };
 
@@ -113,6 +117,7 @@ class BotConfigFactory {
             name: "prowler",
             useStealth: true,
             useSpecial: "STEALTH",
+            aircraftType: 5
         }
     };
 
@@ -127,6 +132,7 @@ class BotConfigFactory {
             fleeHealthThresholdMax: 0.4,
             name: "goliath",
             useSpecial: "WHOMP",
+            aircraftType: 2
         }
     };
 

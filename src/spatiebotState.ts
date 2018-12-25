@@ -16,7 +16,7 @@ class SpatiebotState {
     heartbeatInterval: number;
     previousSpeedMovement: string;
     speedMovement: string;
-    nextMovementExec: number;
+    nextMovementExec: any;
     previousIsFiring: boolean;
     isFiring: boolean;
     previousWhomp: boolean;
@@ -40,5 +40,6 @@ class SpatiebotState {
     pathToMob: any[];
     startedFindingPathToMob: number;
     mob: any;
+    angleInterval: any;
 }
 export { SpatiebotState };

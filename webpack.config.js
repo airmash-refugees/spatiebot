@@ -29,7 +29,7 @@ module.exports = {
         const workerBlobUrl = "data:text/javascript;base64," + base64data;
 
         let spatiebot = fs.readFileSync("./spatiebot.js", "utf8");
-        spatiebot = spatiebot.replace(/__replace_with_blob__/, workerBlobUrl); 
+        spatiebot = spatiebot.replace(/__appworker__/, workerBlobUrl); 
         require("fs").writeFileSync("./spatiebot.js", spatiebot);
       });
     }

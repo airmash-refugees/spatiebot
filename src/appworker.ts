@@ -12,10 +12,11 @@ onmessage = function (event: any) {
         if (action === "findPath") {
             const myPos = args[1];
             const otherPos = args[2];
+            const requestID = args[3];
             const path = botNavigation.findPath(myPos, otherPos);
 
             // callback
-            pm(["findPath", path]);
+            pm(["findPath", path, requestID]);
         } else if (action === "setMountains") {
             const mountains = args[1];
             botNavigation.setMountains(mountains);
