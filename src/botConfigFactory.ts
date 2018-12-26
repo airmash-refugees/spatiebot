@@ -5,6 +5,7 @@ class BotConfig {
     distanceNear: number;
     distanceClose: number;
     distanceTooClose: number;
+    distanceZero: number;
     distanceMissileDangerous: number;
     fleeHealthThresholdMin: number;
     fleeHealthThresholdMax: number;
@@ -36,6 +37,7 @@ class BotConfigFactory {
         distanceNear: 450,
         distanceClose: 300,
         distanceTooClose: 200,
+        distanceZero: 50,
         distanceMissileDangerous: 300,
         fleeHealthThresholdMin: 0.3,
         fleeHealthThresholdMax: 0.7,
@@ -154,7 +156,7 @@ class BotConfigFactory {
 
         switch (type) {
             case 1:
-                return this.normalBotConfig;
+                return this.agressiveBotConfig;
             case 2:
                 return this.goliathBotConfig;
             case 3:

@@ -7,13 +7,17 @@ onmessage = function (event: any) {
 
     const pm = <any>self.postMessage;  // typescript binding is not helping here
 
+    botNavigation.setLogFunction(log);
+    botNavigation.setSignalAliveFunction(signalAlive);
+
     try {
 
         if (action === "findPath") {
             const myPos = args[1];
             const otherPos = args[2];
             const requestID = args[3];
-            const path = botNavigation.findPath(myPos, otherPos);
+
+            const path = botNavigation.findPath(myPos, otherPos, requestID);
 
             // callback
             pm(["findPath", path, requestID]);
@@ -25,7 +29,14 @@ onmessage = function (event: any) {
             pm(["ERROR", "unknown action " + action]);
         }
     } catch (err) {
-        pm(["LOG", "error!", err.message]);
+        log("error:" + err.message);
         pm(["ERROR"]);
+    }
+
+    function log(what: string): void {
+        pm(["LOG", what]);
+    }
+    function signalAlive(): void {
+        pm(["SIGNAL_ALIVE"]);
     }
 };

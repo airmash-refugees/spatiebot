@@ -42,7 +42,7 @@ class SpatiebotCommandExecutor {
         return false;
     }
 
-    public executeCommands() {
+    public executeCommands(isPlayerCarryingFlag: boolean) {
 
         if (!this.state.nextMovementExec) {
             this.state.nextMovementExec = {};
@@ -89,7 +89,7 @@ class SpatiebotCommandExecutor {
                 this.setThrottleTimeFor("movement");
             }
 
-            if (this.config.useSpecial === "SPEED") {
+            if (this.config.useSpecial === "SPEED" && !isPlayerCarryingFlag) {
                 if (fastChanged || this.isThrottleTimeElapsedFor("fast")) {
                     if (this.state.fast) {
                         if (!this.state.fastTimeout) {

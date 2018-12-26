@@ -41,5 +41,7 @@ class SpatiebotState {
     startedFindingPathToMob: number;
     mob: any;
     angleInterval: any;
+    pathToCoords: any[];
+    startedFindingPathToCoords: number;
 }
 export { SpatiebotState };

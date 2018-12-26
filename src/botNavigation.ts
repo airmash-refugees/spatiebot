@@ -1,18 +1,35 @@
 import { Grid, BestFirstFinder, Util } from "pathfinding";
 
 const navConfig = {
-    // map is -16352 to 16352 in the x direction and -8160 to 8160 in the y-direction 
+    // map is -16352 to 16352 in the x direction and -8160 to 8160 in the y-direction
     mapProperties: { left: -16352, top: -8160, right: 16352, bottom: 8160 },
-    mountainWidth: 175,
     maxGridLength: 2500,
     marginStep: 500,
+    scale: 0.1
 };
 
 class BotNavigation {
     private mountains;
+    private log: (what: string) => void;
+    private signalAlive: () => void;
 
-    setMountains(mountains: { x: number, y: number, scale: number }[]): void {
-        this.mountains = mountains;
+    setLogFunction(logFunction: (what: string) => void) {
+        this.log = logFunction;
+    }
+
+    setSignalAliveFunction(signalAlive: () => void): any {
+        this.signalAlive = signalAlive;
+    }
+
+    setMountains(mountains: { x: number, y: number, size: number }[]): void {
+        this.mountains = mountains.map(m => {
+            return {
+                x: m.x * navConfig.scale,
+                y: m.y * navConfig.scale,
+                size: m.size * navConfig.scale,
+            };
+        });
+
     }
 
     private getGrid(width: number, height: number, left: number, top: number): Grid {
@@ -20,20 +37,18 @@ class BotNavigation {
         const grid = new Grid(Math.ceil(width), Math.ceil(height));
 
         this.mountains.forEach(mountain => {
-            const thisMountainWidth = navConfig.mountainWidth * mountain.scale;
-
-            if (mountain.x < left - thisMountainWidth || mountain.x > left + width + thisMountainWidth) {
+            if (mountain.x < left - mountain.size || mountain.x > left + width + mountain.size) {
                 return;
             }
-            if (mountain.y < top - thisMountainWidth || mountain.y > top + height + thisMountainWidth) {
+            if (mountain.y < top - mountain.size || mountain.y > top + height + mountain.size) {
                 return;
             }
 
             // remove walkability of this mountain
-            const mountainLeft = mountain.x - thisMountainWidth;
-            const mountainRight = mountain.x + thisMountainWidth;
-            const mountainTop = mountain.y - thisMountainWidth;
-            const mountainBottom = mountain.y + thisMountainWidth;
+            const mountainLeft = mountain.x - mountain.size;
+            const mountainRight = mountain.x + mountain.size;
+            const mountainTop = mountain.y - mountain.size;
+            const mountainBottom = mountain.y + mountain.size;
             for (let i = mountainLeft; i <= mountainRight; i++) {
                 for (let j = mountainTop; j <= mountainBottom; j++) {
                     const gridX = Math.floor(i - left);
@@ -50,16 +65,33 @@ class BotNavigation {
     }
 
     private isValid(pos: { x: number, y: number }): boolean {
-        const margin = 32;
-        return pos.x > navConfig.mapProperties.left + margin &&
-            pos.x < navConfig.mapProperties.right - margin &&
-            pos.y > navConfig.mapProperties.top + margin &&
-            pos.y < navConfig.mapProperties.bottom - margin;
+        const margin = 32 * navConfig.scale;
+        return pos.x > navConfig.mapProperties.left * navConfig.scale + margin &&
+            pos.x < navConfig.mapProperties.right * navConfig.scale - margin &&
+            pos.y > navConfig.mapProperties.top * navConfig.scale + margin &&
+            pos.y < navConfig.mapProperties.bottom * navConfig.scale - margin;
     }
 
-    public findPath(myPos: { x: number, y: number }, otherPos: { x: number, y: number }, margin: number = 0) {
+    private scale(pos: any): { x: number, y: number, scale: number } {
+        if (pos.scale) {
+            // has already been scaled
+            return pos;
+        }
+        return {
+            x: pos.x * navConfig.scale,
+            y: pos.y * navConfig.scale,
+            scale: navConfig.scale
+        };
+    }
+
+    public findPath(myPos: { x: number, y: number }, otherPos: { x: number, y: number }, requestID: number, margin: number = 0) {
+        this.signalAlive();
+
+        myPos = this.scale(myPos);
+        otherPos = this.scale(otherPos);
 
         if (!this.isValid(myPos) || !this.isValid(otherPos)) {
+            this.log("not valid for " + requestID);
             return [];
         }
 
@@ -73,12 +105,26 @@ class BotNavigation {
             gridLeft = myPos.x - gridWidth + 1 + halvarin;
         }
 
+        if (gridLeft < navConfig.mapProperties.left * navConfig.scale) {
+            gridLeft = navConfig.mapProperties.left * navConfig.scale;
+        }
+        if (gridLeft + gridWidth > navConfig.mapProperties.right * navConfig.scale) {
+            gridLeft = navConfig.mapProperties.right * navConfig.scale - gridWidth - 1;
+        }
+
         let gridTop: number;
         const gridHeight = Math.min(navConfig.maxGridLength, Math.abs(otherPos.y - myPos.y) + margin);
         if (otherPos.y > myPos.y) {
             gridTop = myPos.y - halvarin;
         } else {
             gridTop = myPos.y - gridHeight + 1 + halvarin;
+        }
+
+        if (gridTop < navConfig.mapProperties.top * navConfig.scale) {
+            gridTop = navConfig.mapProperties.top * navConfig.scale;
+        }
+        if (gridTop + gridHeight > navConfig.mapProperties.bottom * navConfig.scale) {
+            gridTop = navConfig.mapProperties.bottom * navConfig.scale - gridHeight - 1;
         }
 
         // get grid with mountains
@@ -129,18 +175,18 @@ class BotNavigation {
 
             const result = [];
             for (let i = 0; i < path.length; i++) {
-                const x = path[i][0] + gridLeft;
-                const y = path[i][1] + gridTop;
+                const x = (path[i][0] + gridLeft) / navConfig.scale;
+                const y = (path[i][1] + gridTop) / navConfig.scale;
                 result.push({ x, y });
             }
-
             return result;
         } else {
             // this is an unwalkable path. Try broadening the grid to find a way around an obstacle (mountain)
             if (margin >= navConfig.maxGridLength) {
+                this.log("ultimately unwalkable for " + requestID);
                 return []; // sorry, can't find a path
             }
-            return this.findPath(myPos, otherPos, margin + navConfig.marginStep);
+            return this.findPath(myPos, otherPos, requestID, margin + (navConfig.marginStep * navConfig.scale));
         }
     }
 }

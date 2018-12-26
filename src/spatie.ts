@@ -25,6 +25,9 @@ const Spatie = {
     },
     getDeltaTo: function (what: any) {
         what = what || this.state.victim;
+        if (!what.pos && what.x && what.y) {
+            what = {pos: what};
+        }
 
         // accuracy
         let victimPos = Spatie.getPosition(what);
@@ -97,7 +100,12 @@ const Spatie = {
     getRandomNumber: function (lower: number, upper: number) {
         return lower + Math.floor(Math.random() * (upper - lower));
     },
-    log: function (what: string) {
+    log: function (what: any = null) {
+
+        if (!what) {
+            return;
+        }
+
         const sp = <any>Spatie;
         if (Spatie.shouldLog) {
             if (!sp.logger) {

@@ -4,10 +4,11 @@ declare const UI: any;
 declare const Graphics: any;
 declare const SettingsProvider: any;
 declare const game: any;
-declare const Players: any;
+declare const Games: any;
 
 import { Spatie } from "./spatie";
 import { SpatieBot } from "./spatiebot";
+import { flagInfo } from "./flagInfo";
 
 function spatiebotInitializer() {
     let currentBot: SpatieBot = null;
@@ -103,6 +104,20 @@ function spatiebotInitializer() {
                 }
             }
         };
+
+        // hijack the networkFlag function to detect the flag location
+        const orgNetworkFlag = Games.networkFlag;
+        Games.networkFlag = function() {
+            orgNetworkFlag.apply(null, arguments);
+
+            const info = arguments[0];
+            if (info.type === 1) {
+                flagInfo.setFlagLocation(info.flag, info.posX, info.posY);
+            } else if (info.type === 2) {
+                flagInfo.setFlagTaken(info.flag);
+            }
+        };
+
 
         // suspend the raw game rendering if the window doesn't have focus
         const orgRender = Graphics.render;

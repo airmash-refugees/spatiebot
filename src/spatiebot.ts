@@ -12,6 +12,7 @@ import { SpatiebotVictimSelection } from "./spatiebotVictimSelection";
 import { PlayerStat } from "./playerStat";
 import { BotNavigationHub } from "./botNavigationHub";
 import { getInsult } from "./insults";
+import { flagInfo } from "./flagInfo";
 
 const botConfigFactory = new BotConfigFactory();
 let lastConfiguration: BotConfig;
@@ -238,15 +239,14 @@ class SpatieBot {
         const coords = this.state.gotoCoords;
         const poi = { pos: coords };
 
-        this.turnTo(poi);
-
         const delta = Spatie.getDeltaTo(poi);
 
-        if (delta.distance > this.config.distanceClose) {
+        this.setSpeedMovement("UP");
+        this.setFastMovement(false);
+
+        if (delta.distance > this.config.distanceNear) {
             this.setFastMovement(true);
-            this.setSpeedMovement("UP");
-        } else {
-            this.setFastMovement(false);
+        } else if (delta.distance < this.config.distanceZero) {
             this.setSpeedMovement(null);
             this.state.gotoCoords = null;
         }
@@ -254,7 +254,7 @@ class SpatieBot {
 
     private approachMob() {
         this.setSpeedMovement("UP");
-        if (this.state.mob.delta.distance > this.config.distanceTooClose) {
+        if (this.state.mob.delta.distance > this.config.distanceClose) {
             this.setFastMovement(true);
         }
     }
@@ -290,8 +290,8 @@ class SpatieBot {
 
     private detectFlagTaken() {
         this.state.flagCarrierID = null;
-        const blueFlagCarrierName = getPlayerName($("#blueflag-name").html());
-        const redFlagCarrierName = getPlayerName($("#redflag-name").html());
+        const blueFlagCarrierName = getPlayerName($("#blueflag-name").html(), /^([^<>]+)</);
+        const redFlagCarrierName = getPlayerName($("#redflag-name").html(), />([^<>]+)$/);
 
         if (blueFlagCarrierName || redFlagCarrierName) {
             const me = Players.getMe();
@@ -305,8 +305,11 @@ class SpatieBot {
             }
         }
 
-        function getPlayerName(raw: string) {
-            const m = /([^<]+)</.exec(raw);
+        flagInfo.setFlagCarrier(1, blueFlagCarrierName);
+        flagInfo.setFlagCarrier(2, redFlagCarrierName);
+
+        function getPlayerName(raw: string, re: RegExp) {
+            const m = re.exec(raw);
             if (m) {
                 return Spatie.decodeHtml(m[1]);
             }
@@ -470,8 +473,8 @@ class SpatieBot {
             return;
         }
 
-        // fire at pursuitor while fleeing
-        let shouldFire = this.state.isFleeing;
+        // fire at pursuitor(s) while fleeing / carrying flag
+        let shouldFire = this.state.isFleeing || this.isPlayerCarryingFlag();
 
         // always fire when we have an upgrade
         if (!shouldFire) {
@@ -503,9 +506,6 @@ class SpatieBot {
             // whomp the thing away
             this.setWhomp();
             Spatie.log("WHOMPING, energy level " + me.energy);
-
-            // and don't dodge
-            return;
         }
 
         let directionToThing = Math.atan2(delta.diffX, -delta.diffY);
@@ -566,8 +566,10 @@ class SpatieBot {
     private clearPathFinding() {
         this.state.pathToMob = null;
         this.state.pathToVictim = null;
+        this.state.pathToCoords = null;
         this.state.startedFindingPathToMob = null;
         this.state.startedFindingPathToVictim = null;
+        this.state.startedFindingPathToCoords = null;
     }
 
     private hasRampage() {
@@ -592,20 +594,20 @@ class SpatieBot {
             this.state.name = "low health flee";
             this.detectStuckness();
             this.handleFlee();
+        } else if (this.state.gotoCoords && (!this.state.pathToCoords || this.state.pathToCoords.length === 0)) {
+            this.state.name = "finding path to coords";
+            this.findPathToCoords();
+            this.temporaryMoveToCoords();
+            this.detectStuckness();
+            this.detectShouldFlee();
         } else if (this.state.gotoCoords) {
             this.state.name = "go to coords";
+            this.findPathToCoords();
+            this.followPathDirectionToCoords();
             this.approachCoords();
-            this.detectStuckness();
+            this.updatePath(this.state.pathToCoords);
             this.detectShouldFlee();
-        } else if (this.state.victim && this.state.startedFindingPathToVictim &&
-            (!this.state.pathToVictim || this.state.pathToVictim.length === 0)) {
-            this.state.name = "finding path to victim";
-            this.findPathToVictim();
-            this.temporaryMoveToVictim();
-            this.detectStuckness();
-            this.detectShouldFlee();
-        } else if (this.state.mob && this.state.startedFindingPathToMob &&
-            (!this.state.pathToMob || this.state.pathToMob.length === 0)) {
+        } else if (this.state.mob && (!this.state.pathToMob || this.state.pathToMob.length === 0)) {
             this.state.name = "finding path to mob";
             this.findPathToMob();
             this.temporaryMoveToMob();
@@ -616,21 +618,26 @@ class SpatieBot {
             this.findPathToMob();
             this.followPathDirectionToMob();
             this.approachMob();
+            this.updatePath(this.state.pathToMob);
+            this.detectShouldFlee();
+        } else if (this.state.victim && (!this.state.pathToVictim || this.state.pathToVictim.length === 0)) {
+            this.state.name = "finding path to victim";
+            this.findPathToVictim();
+            this.temporaryMoveToVictim();
+            this.detectStuckness();
             this.detectShouldFlee();
         } else if (this.state.victim) {
             this.state.name = "chase victim " + this.state.victim.name;
             this.findPathToVictim();
             this.followPathDirectionToVictim();
             this.approachVictim();
-            this.fireAtVictim();
+            this.updatePath(this.state.pathToVictim);
             this.detectVictimPowerUps();
             // this.detectStuckness();
             this.detectShouldFlee();
-            this.detectFlagTaken();
             this.victimSelection.selectVictim();
         } else {
             this.state.name = "finding life purpose";
-            this.detectFlagTaken();
             this.victimSelection.selectVictim();
         }
 
@@ -638,12 +645,68 @@ class SpatieBot {
             Spatie.log(this.state.name);
         }
 
+        this.fireAtVictim();
         this.applyUpgrades();
         this.detectAwayFromHome();
         this.detectDangerousObjects();
-        this.commandExecutor.executeCommands();
-        this.detectMobs();
+        this.commandExecutor.executeCommands(this.isPlayerCarryingFlag());
+        this.detectFlagTaken();
+        this.detectFlagToGrab();
 
+        if (!this.state.gotoCoords) {
+            this.detectMobs();
+        }
+    }
+
+    private updatePath(path: any[]): any {
+        if (!path) {
+            return;
+        }
+
+        const firstPos = path[0];
+
+        var delta = Spatie.getDeltaTo(firstPos);
+
+        if (delta.distance <= this.config.distanceZero) {
+            path.shift();
+        }
+    }
+
+    private isPlayerCarryingFlag(): boolean {
+        if (game.gameType !== 2) {
+            return false;
+        }
+
+        const otherTeam = Players.getMe().team === 1 ? 2 : 1;
+        return flagInfo.getFlagInfo(otherTeam).carrierName === Players.getMe().name;
+    }
+
+    private detectFlagToGrab(): void {
+        if (game.gameType !== 2) {
+            return;
+        }
+
+        const otherTeam = Players.getMe().team === 1 ? 2 : 1;
+
+        const enemyFlag = flagInfo.getFlagInfo(otherTeam);
+        if (enemyFlag.taken) {
+            if (this.isPlayerCarryingFlag()) {
+                // i'm the flag carrier!
+                const myHomeBase = flagInfo.getHomebase(Players.getMe().team);
+                if (this.state.gotoCoords !== myHomeBase.pos) {
+                    this.state.gotoCoords = myHomeBase.pos;
+                    this.clearPathFinding();
+                }
+            } else {
+                this.state.gotoCoords = null;
+                this.clearPathFinding();
+            }
+        } else {
+            if (this.state.gotoCoords !== enemyFlag.pos) {
+                this.state.gotoCoords = enemyFlag.pos;
+                this.clearPathFinding();
+            }
+        }
     }
 
     // while finding path, do a simple move to victim
@@ -659,6 +722,17 @@ class SpatieBot {
         if (this.state.mob) {
             this.turnTo(this.state.mob);
             this.approachMob();
+        }
+    }
+
+    // while finding path, do a simple move to victim
+    private temporaryMoveToCoords(): any {
+        if (this.state.gotoCoords) {
+            const coords = this.state.gotoCoords;
+            const poi = { pos: coords };
+
+            this.turnTo(poi);
+            this.approachCoords();
         }
     }
 
@@ -691,53 +765,107 @@ class SpatieBot {
         this.state.detectedPowerUps = powerups;
     }
 
-    private findPathToVictim(): void {
+    private findPathTo(label: string, what: any, startedDt: number, callback: (path: any) => void, error: (err: any) => void): number {
         if (!this.botNavigationHub.isReady) {
-            return;
+            return null;
         }
 
-        if (this.state.startedFindingPathToVictim && Date.now() - this.state.startedFindingPathToVictim < 3000) {
-            return;
-        }
-
-        let victimPos = Spatie.getPosition(this.state.victim);
-
-        this.state.startedFindingPathToVictim = Date.now();
-        this.botNavigationHub.findPath(Players.getMe().pos, victimPos, (path) => {
-            this.state.startedFindingPathToVictim = null;
-            path.shift(); // my own position
-            this.state.pathToVictim = path;
-        }, (error) => {
-            this.state.startedFindingPathToVictim = null;
-            this.state.pathToVictim = null;
+        const reinitializeBotNavigation = () => {
             this.botNavigationHub.destroy();
             this.botNavigationHub = new BotNavigationHub();
+        };
+
+        const pathFinderTimeout = 5000;
+
+        if (startedDt) {
+            if (Date.now() - startedDt < pathFinderTimeout) {
+                return startedDt;
+            }
+            // timeout elapsed
+            // but the worker may still be doing its calculation if it's heavy
+            if (this.botNavigationHub.lastAliveSignal && Date.now() - this.botNavigationHub.lastAliveSignal < pathFinderTimeout) {
+                // wait some more
+                return startedDt;
+            }
+
+            // timeout ultimately elapsed
+            reinitializeBotNavigation();
+            return null; // not ready yet, so try again next time
+        }
+
+        let whatPos = Spatie.getPosition(what);
+        let whatDelta = Spatie.getDeltaTo(what);
+
+        this.botNavigationHub.findPath(Players.getMe().pos, whatPos, (path) => {
+            path.shift(); // my own position;
+            callback(path);
+
+            if (whatDelta.distance > this.config.distanceNear) {
+                // wait for a few milliseconds before trying again
+                this.botNavigationHub.isReady = false;
+                setTimeout(() => this.botNavigationHub.isReady = true, 800);
+            }
+
+        }, (err) => {
+            Spatie.log(err);
+            reinitializeBotNavigation();
+            error(err);
         });
+
+        return Date.now();
+
+    }
+
+    private findPathToVictim(): void {
+
+        this.state.pathToMob = null;
+        this.state.startedFindingPathToMob = null;
+        this.state.pathToCoords = null;
+        this.state.startedFindingPathToCoords = null;
+
+        this.state.startedFindingPathToVictim = this.findPathTo("victim", this.state.victim, this.state.startedFindingPathToVictim,
+            (path) => {
+                this.state.startedFindingPathToVictim = null;
+                this.state.pathToVictim = path;
+            }, (error) => {
+                this.state.startedFindingPathToVictim = null;
+                this.state.pathToVictim = null;
+            });
     }
 
     private findPathToMob() {
-        if (this.state.startedFindingPathToMob && Date.now() - this.state.startedFindingPathToMob < 3000) {
-            return;
-        }
-
         this.state.pathToVictim = null;
         this.state.startedFindingPathToVictim = null;
+        this.state.pathToCoords = null;
+        this.state.startedFindingPathToCoords = null;
 
-        let mobPos = Spatie.getPosition(this.state.mob);
-
-        this.state.startedFindingPathToMob = Date.now();
-        this.botNavigationHub.findPath(Players.getMe().pos, mobPos, (path) => {
-            this.state.startedFindingPathToMob = null;
-            path.shift(); // my own position
-            this.state.pathToMob = path;
-        }, (error) => {
-            this.state.startedFindingPathToMob = null;
-            this.state.pathToMob = null;
-            this.botNavigationHub.destroy();
-            this.botNavigationHub = new BotNavigationHub();
-        });
+        this.state.startedFindingPathToMob = this.findPathTo("mob", this.state.mob, this.state.startedFindingPathToMob,
+            (path) => {
+                this.state.startedFindingPathToMob = null;
+                this.state.pathToMob = path;
+            }, (error) => {
+                this.state.startedFindingPathToMob = null;
+                this.state.pathToMob = null;
+            });
     }
 
+    private findPathToCoords() {
+        this.state.pathToVictim = null;
+        this.state.startedFindingPathToVictim = null;
+        this.state.pathToMob = null;
+        this.state.startedFindingPathToMob = null;
+
+        const coords = this.state.gotoCoords;
+        const poi = { pos: coords };
+
+        this.state.startedFindingPathToCoords = this.findPathTo("poi", poi, this.state.startedFindingPathToCoords, (path) => {
+            this.state.startedFindingPathToCoords = null;
+            this.state.pathToCoords = path;
+        }, (error) => {
+            this.state.startedFindingPathToCoords = null;
+            this.state.pathToCoords = null;
+        });
+    }
 
     private detectAwayFromHome() {
         if (!this.config.protectHomeBase) {
@@ -827,6 +955,18 @@ class SpatieBot {
 
         const nextPoi = {
             pos: this.state.pathToMob[0]
+        };
+
+        this.turnTo(nextPoi);
+    }
+
+    private followPathDirectionToCoords() {
+        if (!this.state.pathToCoords || this.state.pathToCoords.length === 0) {
+            return;
+        }
+
+        const nextPoi = {
+            pos: this.state.pathToCoords[0]
         };
 
         this.turnTo(nextPoi);
