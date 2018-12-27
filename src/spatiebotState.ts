@@ -40,7 +40,7 @@ class SpatiebotState {
     pathToMob: any[];
     startedFindingPathToMob: number;
     mob: any;
-    angleInterval: any;
+    angleTimeout: any;
     pathToCoords: any[];
     startedFindingPathToCoords: number;
 }

@@ -797,16 +797,28 @@ class SpatieBot {
         let whatDelta = Spatie.getDeltaTo(what);
 
         this.botNavigationHub.findPath(Players.getMe().pos, whatPos, (path) => {
+            if (!this.isOn()) {
+                return;
+            }
+
             path.shift(); // my own position;
             callback(path);
 
             if (whatDelta.distance > this.config.distanceNear) {
                 // wait for a few milliseconds before trying again
                 this.botNavigationHub.isReady = false;
-                setTimeout(() => this.botNavigationHub.isReady = true, 800);
+                setTimeout(() => {
+                    if (this.isOn()) {
+                        this.botNavigationHub.isReady = true;
+                    }
+                }, 800);
             }
 
         }, (err) => {
+            if (!this.isOn()) {
+                return;
+            }
+
             Spatie.log(err);
             reinitializeBotNavigation();
             error(err);

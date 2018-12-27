@@ -1,16 +1,27 @@
-declare var Network: any;
-declare var Players: any;
-declare var AutoPilot: any;
+declare const Network: any;
+declare const Players: any;
+declare const game: any;
 
 import { SpatiebotState } from "./spatiebotState";
 import { BotConfig } from "./botConfigFactory";
 import { Spatie } from "./spatie";
 
+// rotation speeds per 100 ms
+const rotationSpeeds = {
+    1: 0.39, // predator
+    2: 0.24, // goliath
+    3: 0.42, // mohawk
+    4: 0.33, // tornado
+    5: 0.33  // prowler
+};
+
 class SpatiebotCommandExecutor {
 
-    private networkSendKey = Network.sendKey;
+    private mySpeed: number;
 
     constructor(private state: SpatiebotState, private config: BotConfig) {
+        const aircraftType = Players.getMe().type;
+        this.mySpeed = rotationSpeeds[aircraftType] || 0.33;
     }
 
     public clearCommands() {
@@ -26,7 +37,7 @@ class SpatiebotCommandExecutor {
         return !this.state.nextMovementExec[what] || Date.now() > this.state.nextMovementExec[what];
     }
 
-    private setThrottleTimeFor(what: string) : void {
+    private setThrottleTimeFor(what: string): void {
         this.state.nextMovementExec[what] = Date.now() + this.config.throttleInterval;
     }
 
@@ -153,43 +164,51 @@ class SpatiebotCommandExecutor {
         }
     }
 
+    private getRotDelta(myRot: number, desRot: number): { direction: string, rotDiff: number } {
+        let rotDiff = Math.abs(myRot - desRot);
+        const pi = Math.atan2(0, -1);
+        let direction;
+        if (myRot > desRot) {
+            if (rotDiff > pi) {
+                direction = "RIGHT";
+                rotDiff = rotDiff - pi;
+            } else {
+                direction = "LEFT";
+            }
+        } else if (myRot < desRot) {
+            if (rotDiff > pi) {
+                direction = "LEFT";
+                rotDiff = rotDiff - pi;
+            } else {
+                direction = "RIGHT";
+            }
+        }
+
+        return { direction, rotDiff };
+    }
+
     private turnToDesiredAngle() {
-        const myRot = Players.getMe().rot;
+        if (this.state.angleTimeout) {
+            // still turning
+            return;
+        }
+
         const desRot = this.state.desiredAngle;
-        const rotDiff = Math.abs(myRot - desRot);
-        if (rotDiff > this.config.precision) {
-            const pi = Math.atan2(0, -1);
-            let direction;
-            if (myRot > desRot) {
-                if (rotDiff > pi) {
-                    direction = "RIGHT";
-                } else {
-                    direction = "LEFT";
-                }
-            } else if (myRot < desRot) {
-                if (rotDiff > pi) {
-                    direction = "LEFT";
-                } else {
-                    direction = "RIGHT";
-                }
-            }
-            if (this.state.angleInterval) {
-                clearInterval(this.state.angleInterval);
-            }
-            Network.sendKey(direction === "LEFT" ? "RIGHT" : "LEFT", false);
-            Network.sendKey(direction, true);
-            const myInterval = setInterval(() => {
-                // stop when desired angle has been reached
-                const desRot2 = this.state.desiredAngle;
-                const myRot2 = Players.getMe().rot;
-                const rotDiff = Math.abs(myRot2 - desRot2);
-                if (rotDiff <= this.config.precision) {
-                    clearInterval(myInterval);
-                    Network.sendKey(direction, false);
-                    this.state.desiredAngle = undefined; // as opposed to null, because NaN(null) === false
-                }
-            }, 50);
-            this.state.angleInterval = myInterval;
+        const rotDelta = this.getRotDelta(Players.getMe().rot, desRot);
+
+        if (rotDelta.rotDiff > this.config.precision) {
+            const msNeededToTurn = (rotDelta.rotDiff / this.mySpeed) * 100;
+
+            Network.sendKey(rotDelta.direction === "LEFT" ? "RIGHT" : "LEFT", false);
+            Network.sendKey(rotDelta.direction, true);
+            const myTimeout = setTimeout(() => {
+                Network.sendKey(rotDelta.direction, false);
+                this.state.desiredAngle = undefined; // as opposed to null, because NaN(null) === false
+
+                // wait ping before next update, to know our real angle
+                this.state.angleTimeout = setTimeout(() => this.state.angleTimeout = null, game.ping);
+            }, msNeededToTurn);
+            this.state.angleTimeout = myTimeout;
         }
     }
 }

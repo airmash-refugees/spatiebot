@@ -5,7 +5,7 @@ const navConfig = {
     mapProperties: { left: -16352, top: -8160, right: 16352, bottom: 8160 },
     maxGridLength: 2500,
     marginStep: 500,
-    scale: 0.1
+    scale: 0.25
 };
 
 class BotNavigation {
