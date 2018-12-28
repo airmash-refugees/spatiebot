@@ -38,7 +38,7 @@ class SpatiebotCommandExecutor {
     }
 
     private setThrottleTimeFor(what: string): void {
-        this.state.nextMovementExec[what] = Date.now() + this.config.throttleInterval;
+        this.state.nextMovementExec[what] = Date.now() + Math.max(this.config.throttleInterval, game.ping);
     }
 
     private isAnyThrottleTimeElapsed(): boolean {
@@ -73,7 +73,13 @@ class SpatiebotCommandExecutor {
             fastChanged = this.state.previousFast !== this.state.fast;
         }
 
-        if (desiredAngleChanged || movementChanged || fastChanged || fireChanged || whompChanged || this.isAnyThrottleTimeElapsed()) {
+        // angle has its own throttle
+        if (!isNaN(this.state.desiredAngle) && desiredAngleChanged) {
+            this.turnToDesiredAngle();
+            this.state.lastDesiredAngle = this.state.desiredAngle;
+        }
+
+        if (this.isAnyThrottleTimeElapsed()) {
 
             if (movementChanged) {
                 if (this.state.previousSpeedMovement) {
@@ -81,27 +87,21 @@ class SpatiebotCommandExecutor {
                 }
                 this.state.previousSpeedMovement = this.state.speedMovement;
             }
-            if (desiredAngleChanged) {
-                this.state.lastDesiredAngle = this.state.desiredAngle;
-            }
+
             if (fastChanged) {
                 this.state.previousFast = this.state.fast;
             }
             if (fireChanged) {
                 this.state.previousIsFiring = this.state.isFiring;
             }
-            if (!isNaN(this.state.desiredAngle) && (desiredAngleChanged || this.isThrottleTimeElapsedFor("angle"))) {
-                this.turnToDesiredAngle();
-                this.setThrottleTimeFor("angle");
-            }
 
-            if (this.state.speedMovement && (movementChanged || this.isThrottleTimeElapsedFor("movement"))) {
+            if (this.state.speedMovement && this.isThrottleTimeElapsedFor("movement")) {
                 Network.sendKey(this.state.speedMovement, true);
                 this.setThrottleTimeFor("movement");
             }
 
             if (this.config.useSpecial === "SPEED" && !isPlayerCarryingFlag) {
-                if (fastChanged || this.isThrottleTimeElapsedFor("fast")) {
+                if (this.isThrottleTimeElapsedFor("fast")) {
                     if (this.state.fast) {
                         if (!this.state.fastTimeout) {
                             Network.sendKey("SPECIAL", true);
@@ -117,7 +117,7 @@ class SpatiebotCommandExecutor {
                 }
             }
 
-            if (fireChanged || this.isThrottleTimeElapsedFor("fire")) {
+            if (this.isThrottleTimeElapsedFor("fire")) {
                 let fireKey = "FIRE";
                 if (this.config.useSpecial === "FIRE") {
                     fireKey = "SPECIAL";
