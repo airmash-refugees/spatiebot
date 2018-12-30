@@ -5,6 +5,8 @@ declare const Graphics: any;
 declare const SettingsProvider: any;
 declare const game: any;
 declare const Games: any;
+declare const Network: any;
+declare const Players: any;
 
 import { Spatie } from "./spatie";
 import { SpatieBot } from "./spatiebot";
@@ -107,7 +109,7 @@ function spatiebotInitializer() {
 
         // hijack the networkFlag function to detect the flag location
         const orgNetworkFlag = Games.networkFlag;
-        Games.networkFlag = function() {
+        Games.networkFlag = function () {
             orgNetworkFlag.apply(null, arguments);
 
             const info = arguments[0];
@@ -160,9 +162,20 @@ function spatiebotInitializer() {
         if (logChat) {
             console.log(player.name + ": " + text);
         }
+        
+        Spatie.onChatLine(text);
 
         if (currentBot) {
-            if (text === "-sb-bond") {
+            if (text === "-sb-drop") {
+                currentBot.dropFlag(player);
+            } else if (text === "-sb-help") {
+                Spatie.announceGeneral(["-sb-target: shows current target.", "-sb-suggest <player>: go after <player>.",
+                    "In CTF: -sb-drop: drop the flag", "-sb-defend: go D", "-sb-attack: go O"]);
+            } else if (text === "-sb-defend") {
+                currentBot.defend(player, true);
+            } else if (text === "-sb-attack") {
+                currentBot.defend(player, false);
+            } else if (text === "-sb-bond") {
                 // bond with all other players with 'Bot 'in their names during 3 lives
                 currentBot.toggleBonding();
             } else if (text === "-sb-target") {
@@ -184,6 +197,54 @@ function spatiebotInitializer() {
         }
     });
 
+    let botWasOn = false;
+    function gameStarted() {
+        if (!currentBot) {
+            if (botWasOn) {
+                currentBot = createNewBot();
+                currentBot.initialize();
+
+                if (game.gameType === 2) {
+                    const randomNumber = Spatie.getRandomNumber(0, 4);
+                    currentBot.defend(Players.getMe(), randomNumber === 0);
+                }
+            }
+        }
+    }
+    function gameEnded() {
+        botWasOn = !!currentBot;
+        if (currentBot) {
+            currentBot.dispose();
+            currentBot = null;
+        }
+    }
+
+    SWAM.on("CTF_MatchStarted", gameStarted);
+    SWAM.on("CTF_MatchEnded", gameEnded);
+    SWAM.on("BTR_MatchStarted", gameStarted);
+    SWAM.on("BTR_MatchEnded", gameEnded);
+
+    // reconnect if the bot gets disconnected
+    setInterval(() => {
+        const msg = document.getElementById("msg-alert");
+        if (!msg) {
+            return;
+        }
+
+        if (/DISCONNECTED/.exec(msg.innerText)) {
+            if (currentBot) {
+                currentBot.dispose();
+                currentBot = null;
+
+                Network.reconnect();
+
+                setTimeout(() => {
+                    currentBot = createNewBot();
+                    currentBot.initialize();
+                }, 3000);
+            }
+        }
+    }, 5000);
 }
 
 spatiebotInitializer();

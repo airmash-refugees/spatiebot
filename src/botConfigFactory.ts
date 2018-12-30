@@ -12,7 +12,7 @@ class BotConfig {
     fireConstantly: boolean;
     goForUpgrades: boolean;
     heartbeatInterval: number;
-    homeBase: { x: number, y: number, radius: number };
+    homeBase: { pos: { x: number, y: number }, radius: number };
     name: string;
     offensive: boolean;
     precision: number;
@@ -57,16 +57,6 @@ class BotConfigFactory {
         useStealth: false,
         victimExpireMs: 120 * 1000,
         aircraftType: 1
-    };
-
-    private readonly squareProtectingBotConfig: BotConfig = {
-        ...this.normalBotConfig, ...{
-            applyUpgradesTo: 2,
-            offensive: false,
-            homeBase: { x: 926, y: -2805, radius: 500 },
-            name: "squareProtecting",
-            protectHomeBase: true,
-        }
     };
 
     private readonly agressiveBotConfig: BotConfig = {
@@ -140,7 +130,6 @@ class BotConfigFactory {
 
     public getConfigByName(name: string): BotConfig {
         const availableConfigs = [
-            this.squareProtectingBotConfig,
             this.agressiveBotConfig,
             this.copterBotConfig,
             this.tornadoBotConfig,

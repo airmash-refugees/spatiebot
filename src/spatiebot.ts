@@ -43,6 +43,10 @@ class SpatieBot {
     public dispose() {
         if (this.state && this.state.heartbeatInterval) {
 
+            if (this.state.resetTimeout) {
+                clearTimeout(this.state.resetTimeout);
+            }
+
             clearInterval(this.state.heartbeatInterval);
             this.commandExecutor.clearCommands();
             this.botNavigationHub.destroy();
@@ -82,12 +86,32 @@ class SpatieBot {
         this.botNavigationHub = new BotNavigationHub();
 
         Spatie.log("Starting bot of type " + this.config.name);
+        Spatie.log(this.config.protectHomeBase);
 
         if (this.config.bondingTimes > 0) {
             this.config.bondingTimes = this.config.bondingTimes - 1;
         }
 
         this.state.heartbeatInterval = setInterval(() => this.heartbeat(), this.config.heartbeatInterval);
+
+        // reset bot each 2 minutes, to ensure that it keeps working
+        const that = this;
+        function reset() {
+            if (!that.isOn()) {
+                return;
+            }
+            
+            if (Players.getMe().health < 1) {
+                // in combat, wait a few seconds
+                that.state.resetTimeout = setTimeout(reset, 10 * 1000);
+                return;
+            }
+
+            Spatie.log("Resetting bot");
+            that.dispose();
+            setTimeout(() => that.initialize(), that.config.respawnTimeout);
+        }
+        this.state.resetTimeout = setTimeout(reset, 2 * 60 * 1000);
     }
 
     public logState() {
@@ -125,6 +149,14 @@ class SpatieBot {
 
         if (playerID === game.myID) {
             return;
+        }
+
+        if (game.gameType === 2) {
+            const player = Players.get(playerID);
+            if (player && player.team === Players.getMe().team) {
+                // friendly fire
+                return;
+            }
         }
 
         // then call our own event in case of missiles
@@ -213,6 +245,65 @@ class SpatieBot {
         }
     }
 
+    public dropFlag(suggestingPlayer: any): void {
+        if (!this.isOn()) {
+            return;
+        }
+        if (game.gameType !== 2) {
+            return;
+        }
+        if (!this.isPlayerCarryingFlag()) {
+            // just to be sure, send the drop command, we may detect the flag possession wrong
+            // and that would be very frustrating for other players
+            Network.sendCommand("drop", "");
+            return;
+        }
+
+        const me = Players.getMe();
+        if (me.team !== suggestingPlayer.team) {
+            Spatie.announce("I will think about it.");
+            return;
+        }
+
+        const delta = Spatie.getDeltaTo(suggestingPlayer);
+        if (delta.distance > this.config.distanceNear) {
+            Spatie.announce("You're too far away");
+            return;
+        }
+
+        Network.sendCommand("drop", "");
+        this.state.leaveFlagTimeout = Date.now() + 3000;
+    }
+
+    public defend(suggestingPlayer, shouldDefend: boolean) {
+        if (!this.isOn()) {
+            return;
+        }
+        if (game.gameType !== 2) {
+            return;
+        }
+        if (this.isPlayerCarryingFlag()) {
+            return;
+        }
+
+        const me = Players.getMe();
+        if (me.team !== suggestingPlayer.team) {
+            return;
+        }
+
+        if (shouldDefend) {
+            this.config.homeBase = { ...flagInfo.getHomebase(me.team), radius: 300 };
+            this.config.protectHomeBase = true;
+            Spatie.log("On D now");
+        } else {
+            this.config.protectHomeBase = false;
+            Spatie.log("On O now");
+        }
+        this.clearPathFinding();
+        this.state.victim = null;
+        this.state.gotoCoords = null;
+    }
+
     private applyUpgrades() {
         let tooEarly = false;
         if (this.state.lastUpgradeApplicationTime) {
@@ -223,13 +314,13 @@ class SpatieBot {
         const hasNoRisk = Players.getMe().health >= 0.9;
 
         if (!tooEarly && hasEnoughUpgrades && hasNoRisk) {
-            let count = 0;
             this.state.lastUpgradeApplicationTime = Date.now();
             const upgradeInterval = setInterval(() => {
                 Network.sendCommand("upgrade", this.config.applyUpgradesTo + "");
-                count += 1;
-                if (count === 5) {
+                this.upgradeInfo.availableUpgrades--;
+                if (this.upgradeInfo.availableUpgrades <= 0) {
                     clearInterval(upgradeInterval);
+                    this.upgradeInfo.availableUpgrades = 0;
                 }
             }, 400);
         }
@@ -337,6 +428,7 @@ class SpatieBot {
         }
 
         const dangerFactorForHealth = this.config.fleeHealthThresholdMax / Players.getMe().health;
+        const dangerFactorForCarrier = this.isPlayerCarryingFlag() ? 3 : 1;
 
         if (activeMissiles.length > 0) {
             const myPos = Players.getMe().pos;
@@ -357,7 +449,7 @@ class SpatieBot {
             const delta = nearestMissile.delta || Spatie.calcDiff(myPos, nearestMissile.pos);
 
             const dangerFactorForMissile = nearestMissile.exhaust / 18; // = heli missile exhaust
-            const dangerDistance = this.config.distanceMissileDangerous * dangerFactorForMissile * dangerFactorForHealth;
+            const dangerDistance = this.config.distanceMissileDangerous * dangerFactorForMissile * dangerFactorForHealth * dangerFactorForCarrier;
 
             if (delta.distance < dangerDistance) {
                 this.state.objectToFleeFromID = nearestMissile.id;
@@ -384,7 +476,7 @@ class SpatieBot {
             const closestEnemy = Spatie.getHostilePlayersSortedByDistance(victimID, agressivePlayerIDs)[0];
             if (closestEnemy) {
                 const delta = Spatie.getDeltaTo(closestEnemy);
-                const dangerDistance = dangerFactorForHealth * this.config.distanceTooClose;
+                const dangerDistance = dangerFactorForHealth * this.config.distanceTooClose * dangerFactorForCarrier;
                 if (delta.isAccurate && delta.distance < dangerDistance) {
                     this.state.objectToFleeFromID = closestEnemy.id;
                 }
@@ -400,7 +492,12 @@ class SpatieBot {
         if (this.hasShield()) {
             return;
         }
-        if (Players.getMe().health < this.config.fleeHealthThresholdMin) {
+        let threshold = this.config.fleeHealthThresholdMin;
+        if (this.isPlayerCarryingFlag()) {
+            threshold = 0.9;
+        }
+
+        if (Players.getMe().health < threshold) {
             this.state.isFleeing = true;
             this.clearPathFinding();
         }
@@ -414,7 +511,9 @@ class SpatieBot {
 
         const me = Players.getMe();
         const speed = me.speed;
-        const seemsStuck = Math.abs(speed.x) < 1 && Math.abs(speed.y) < 1 && me.state.thrustLevel > 0;
+        const seemsStuck = Math.abs(speed.x) < 1 && Math.abs(speed.y) < 1 && 
+            me.state.thrustLevel > 0 &&
+            me.state.speedMovement === me.state.previousSpeedMovement;
 
         if (seemsStuck) {
             if (!this.state.stucknessTimeout) {
@@ -521,7 +620,12 @@ class SpatieBot {
 
     private handleFlee() {
         // find the nearest player and flee from it
-        if (Players.getMe().health > this.config.fleeHealthThresholdMax || this.hasShield()) {
+        let threshold = this.config.fleeHealthThresholdMax;
+        if (this.isPlayerCarryingFlag()) {
+            threshold = 0.9;
+        }
+
+        if (Players.getMe().health > threshold || this.hasShield()) {
             this.state.isFleeing = false;
             return;
         }
@@ -606,6 +710,7 @@ class SpatieBot {
             this.followPathDirectionToCoords();
             this.approachCoords();
             this.updatePath(this.state.pathToCoords);
+            this.detectStuckness();
             this.detectShouldFlee();
         } else if (this.state.mob && (!this.state.pathToMob || this.state.pathToMob.length === 0)) {
             this.state.name = "finding path to mob";
@@ -619,6 +724,7 @@ class SpatieBot {
             this.followPathDirectionToMob();
             this.approachMob();
             this.updatePath(this.state.pathToMob);
+            this.detectStuckness();
             this.detectShouldFlee();
         } else if (this.state.victim && (!this.state.pathToVictim || this.state.pathToVictim.length === 0)) {
             this.state.name = "finding path to victim";
@@ -633,12 +739,13 @@ class SpatieBot {
             this.approachVictim();
             this.updatePath(this.state.pathToVictim);
             this.detectVictimPowerUps();
-            // this.detectStuckness();
+            this.detectStuckness();
             this.detectShouldFlee();
             this.victimSelection.selectVictim();
         } else {
             this.state.name = "finding life purpose";
             this.victimSelection.selectVictim();
+            this.detectAwayFromHome();
         }
 
         if (this.state.name !== this.state.previous) {
@@ -647,11 +754,10 @@ class SpatieBot {
 
         this.fireAtVictim();
         this.applyUpgrades();
-        this.detectAwayFromHome();
         this.detectDangerousObjects();
         this.commandExecutor.executeCommands(this.isPlayerCarryingFlag());
         this.detectFlagTaken();
-        this.detectFlagToGrab();
+        this.detectFlagToGrabOrReturn();
 
         if (!this.state.gotoCoords) {
             this.detectMobs();
@@ -681,31 +787,77 @@ class SpatieBot {
         return flagInfo.getFlagInfo(otherTeam).carrierName === Players.getMe().name;
     }
 
-    private detectFlagToGrab(): void {
+    private detectFlagToGrabOrReturn(): void {
         if (game.gameType !== 2) {
             return;
         }
 
-        const otherTeam = Players.getMe().team === 1 ? 2 : 1;
+        if (this.state.leaveFlagTimeout && this.state.leaveFlagTimeout > Date.now()) {
+            return;
+        }
 
+        this.state.flybackwards = false;
+
+        const otherTeam = Players.getMe().team === 1 ? 2 : 1;
         const enemyFlag = flagInfo.getFlagInfo(otherTeam);
-        if (enemyFlag.taken) {
+        const myFlag = flagInfo.getFlagInfo(Players.getMe().team);
+        const myHomeBase = flagInfo.getHomebase(Players.getMe().team);
+
+        // if my flag is taken and closer, try to recap. Otherwise, go for the enemy flag.
+        let shouldRegrab = false;
+        let shouldBringHome = false;
+        if (myFlag.taken) {
+            const carrier = Players.getByName(myFlag.carrierName);
+            const carrierDelta = Spatie.getDeltaTo(carrier);
+            const enemyFlagDelta = Spatie.getDeltaTo(enemyFlag);
+            shouldRegrab = carrierDelta.distance < enemyFlagDelta.distance;
+        } else {
+            const flagDeltaFromHome = Spatie.calcDiff(myHomeBase.pos, myFlag.pos);
+            if (flagDeltaFromHome.distance > this.config.distanceZero) {
+                shouldBringHome = true;
+            }
+        }
+
+        if (this.isPlayerCarryingFlag()) {
+            shouldBringHome = false;
+            shouldRegrab = false;
+        }
+
+        if (shouldRegrab) {
+            this.victimSelection.selectVictim(); // will select flag carrier
+            if (this.state.gotoCoords) {
+                // clear previous try to get the flag
+                this.state.gotoCoords = null;
+                this.clearPathFinding();
+            }
+        } else if (shouldBringHome) {
+            if (this.state.gotoCoords !== myFlag.pos) {
+                this.state.gotoCoords = myFlag.pos;
+                this.clearPathFinding();
+            }
+        } else if (enemyFlag.taken) {
             if (this.isPlayerCarryingFlag()) {
                 // i'm the flag carrier!
-                const myHomeBase = flagInfo.getHomebase(Players.getMe().team);
                 if (this.state.gotoCoords !== myHomeBase.pos) {
                     this.state.gotoCoords = myHomeBase.pos;
                     this.clearPathFinding();
                 }
+                this.state.flybackwards = true;
             } else {
-                this.state.gotoCoords = null;
-                this.clearPathFinding();
+                if (!this.config.protectHomeBase) {
+                    if (this.state.gotoCoords) {
+                        // clear previous try to get the flag, go and do random things.
+                        this.state.gotoCoords = null;
+                        this.clearPathFinding();
+                        // for example, select a victim
+                        this.victimSelection.selectVictim();
+                    }
+                }
             }
-        } else {
-            if (this.state.gotoCoords !== enemyFlag.pos) {
-                this.state.gotoCoords = enemyFlag.pos;
-                this.clearPathFinding();
-            }
+        } else if (!this.config.protectHomeBase && this.state.gotoCoords !== enemyFlag.pos) {
+            // enemy flag is not taken, i am on O, go and take it
+            this.state.gotoCoords = enemyFlag.pos;
+            this.clearPathFinding();
         }
     }
 
@@ -804,15 +956,17 @@ class SpatieBot {
             path.shift(); // my own position;
             callback(path);
 
-            if (whatDelta.distance > this.config.distanceNear) {
-                // wait for a few milliseconds before trying again
-                this.botNavigationHub.isReady = false;
-                setTimeout(() => {
-                    if (this.isOn()) {
-                        this.botNavigationHub.isReady = true;
-                    }
-                }, 800);
+            // wait for a few milliseconds before trying again
+            let wait = 800;
+            if (whatDelta.distance < this.config.distanceNear) {
+                wait = 200;
             }
+            this.botNavigationHub.isReady = false;
+            setTimeout(() => {
+                if (this.isOn()) {
+                    this.botNavigationHub.isReady = true;
+                }
+            }, wait);
 
         }, (err) => {
             if (!this.isOn()) {
@@ -884,9 +1038,9 @@ class SpatieBot {
             return;
         }
 
-        const deltaFromHome = Spatie.calcDiff(Players.getMe().pos, this.config.homeBase);
+        const deltaFromHome = Spatie.calcDiff(Players.getMe().pos, this.config.homeBase.pos);
         if (deltaFromHome.distance > this.config.homeBase.radius) {
-            this.state.gotoCoords = this.config.homeBase;
+            this.state.gotoCoords = this.config.homeBase.pos;
         }
     }
 

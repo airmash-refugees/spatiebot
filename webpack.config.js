@@ -15,8 +15,8 @@ module.exports = {
       { loader: 'ts-loader' }
     ]
   },
-  mode: "development",
-  optimization: { minimize: false },
+  // mode: "development",
+  // optimization: { minimize: false },
   plugins: [{
     apply: (compiler) => {
       compiler.hooks.afterEmit.tap('AfterEmitPlugin', (compilation) => {

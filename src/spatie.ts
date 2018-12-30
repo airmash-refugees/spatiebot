@@ -2,10 +2,20 @@ declare var Players: any;
 declare var Network: any;
 declare var game: any;
 
+let announceQueue: string[] = [];
+
 const Spatie = {
     announce: function (what: string) {
         Spatie.log("Announce: " + what);
         Network.sendChat(what);
+    },
+    announceGeneral: function (whats: string[]) {
+        announceQueue.push(...whats);
+    },
+    onChatLine: function (line: string) {
+        if (announceQueue.indexOf(line) > -1) {
+            announceQueue = announceQueue.filter(x => x !== line);
+        }
     },
     calcDiff: function (first: any, second: any) {
         const diffX = second.x - first.x;
@@ -26,7 +36,7 @@ const Spatie = {
     getDeltaTo: function (what: any) {
         what = what || this.state.victim;
         if (!what.pos && what.x && what.y) {
-            what = {pos: what};
+            what = { pos: what };
         }
 
         // accuracy
@@ -135,4 +145,18 @@ const Spatie = {
     shouldLog: false,
     shouldLogToConsole: false,
 };
+
+// announcement loop
+const intervalMs = Spatie.getRandomNumber(1000, 3000);
+setInterval(() => {
+    if (announceQueue.length === 0) {
+        return;
+    }
+
+    const line = announceQueue.shift();
+    Spatie.announce(line);
+}, intervalMs);
+
+
+
 export { Spatie };

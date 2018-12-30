@@ -12,32 +12,41 @@ class SpatiebotVictimSelection {
     }
 
     public selectVictim() {
-        if (this.config.offensive) {
-            this.selectVictimOffensively();
-        } else if (this.config.protectHomeBase) {
+        if (this.config.protectHomeBase) {
             this.selectVictimDefensively();
         } else {
-            // passive bot apparently...
+            this.selectVictimOffensively();
         }
     }
 
     private selectVictimDefensively() {
+        const currentVictim = this.state.victim;
         this.state.victim = null; // always drop the victim by default.
 
-        const now = Date.now();
+        // always choose flag carrier as victim if there is one
+        const flagCarrier = this.targetFlagCarrier();
+        if (flagCarrier && this.isVictimValid(flagCarrier)) {
+            this.state.victim = flagCarrier;
+        } else {
+            const agressivePlayers = Spatie.getHostilePlayersSortedByDistance()
+                .filter(x => this.isVictimValid(x));
 
-        const agressivePlayerIDs = this.playerStats
-            .filter(x => x.isAgressive)
-            .map(x => x.id);
-
-        const agressivePlayers = Spatie.getHostilePlayersSortedByDistance(null, agressivePlayerIDs)
-            .filter(x => this.isVictimValid(x));
-
-        if (agressivePlayers.length === 0) {
-            return;
+            if (agressivePlayers.length > 0) {
+                // only if they are a certain range from home base
+                const closestPlayer = agressivePlayers[0];
+                const playerPos = Spatie.getPosition(closestPlayer);
+                const delta = Spatie.calcDiff(this.config.homeBase.pos, playerPos);
+                if (delta.distance < 2000) {
+                    this.state.victim = closestPlayer;
+                }
+            }
         }
 
-        this.state.victim = agressivePlayers[0];
+        if (currentVictim !== this.state.victim && this.state.victim) {
+            Spatie.log("New victim: " + this.state.victim.name);
+            this.state.pathToVictim = null;
+        }
+
     }
 
     private selectVictimOffensively() {

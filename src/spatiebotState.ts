@@ -43,5 +43,8 @@ class SpatiebotState {
     angleTimeout: any;
     pathToCoords: any[];
     startedFindingPathToCoords: number;
+    leaveFlagTimeout: number;
+    resetTimeout: number;
+    flybackwards: boolean;
 }
 export { SpatiebotState };

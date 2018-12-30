@@ -14,6 +14,7 @@ const rotationSpeeds = {
     4: 0.33, // tornado
     5: 0.33  // prowler
 };
+const pi = Math.atan2(0, -1);
 
 class SpatiebotCommandExecutor {
 
@@ -38,7 +39,7 @@ class SpatiebotCommandExecutor {
     }
 
     private setThrottleTimeFor(what: string): void {
-        this.state.nextMovementExec[what] = Date.now() + Math.max(this.config.throttleInterval, game.ping);
+        this.state.nextMovementExec[what] = Date.now() + this.config.throttleInterval;
     }
 
     private isAnyThrottleTimeElapsed(): boolean {
@@ -73,35 +74,62 @@ class SpatiebotCommandExecutor {
             fastChanged = this.state.previousFast !== this.state.fast;
         }
 
-        // angle has its own throttle
-        if (!isNaN(this.state.desiredAngle) && desiredAngleChanged) {
-            this.turnToDesiredAngle();
-            this.state.lastDesiredAngle = this.state.desiredAngle;
+        let desiredAngle = this.state.desiredAngle;
+        let desiredMovement = this.state.speedMovement;
+        let previousMovement = this.state.previousSpeedMovement;
+        if (this.state.flybackwards) {
+            if (desiredAngle) {
+                if (desiredAngle > pi) {
+                    desiredAngle -= pi;
+                } else {
+                    desiredAngle += pi;
+                }
+            }
+            if (desiredMovement) {
+                if (desiredMovement === "UP") {
+                    desiredMovement = "DOWN";
+                } else {
+                    desiredMovement = "UP";
+                }
+            }
+            if (previousMovement) {
+                if (previousMovement === "UP") {
+                    previousMovement = "DOWN";
+                } else {
+                    previousMovement = "UP";
+                }
+            }
         }
 
-        if (this.isAnyThrottleTimeElapsed()) {
+        if (desiredAngleChanged || movementChanged || fastChanged || fireChanged || whompChanged || this.isAnyThrottleTimeElapsed()) {
 
             if (movementChanged) {
-                if (this.state.previousSpeedMovement) {
-                    Network.sendKey(this.state.previousSpeedMovement, false);
+                if (previousMovement) {
+                    Network.sendKey(previousMovement, false);
                 }
                 this.state.previousSpeedMovement = this.state.speedMovement;
             }
-
+            if (desiredAngleChanged) {
+                this.state.lastDesiredAngle = this.state.desiredAngle;
+            }
             if (fastChanged) {
                 this.state.previousFast = this.state.fast;
             }
             if (fireChanged) {
                 this.state.previousIsFiring = this.state.isFiring;
             }
+            if (!isNaN(this.state.desiredAngle) && (desiredAngleChanged || this.isThrottleTimeElapsedFor("angle"))) {
+                this.turnToDesiredAngle(desiredAngle);
+                this.setThrottleTimeFor("angle");
+            }
 
-            if (this.state.speedMovement && this.isThrottleTimeElapsedFor("movement")) {
-                Network.sendKey(this.state.speedMovement, true);
+            if (this.state.speedMovement && (movementChanged || this.isThrottleTimeElapsedFor("movement"))) {
+                Network.sendKey(desiredMovement, true);
                 this.setThrottleTimeFor("movement");
             }
 
             if (this.config.useSpecial === "SPEED" && !isPlayerCarryingFlag) {
-                if (this.isThrottleTimeElapsedFor("fast")) {
+                if (fastChanged || this.isThrottleTimeElapsedFor("fast")) {
                     if (this.state.fast) {
                         if (!this.state.fastTimeout) {
                             Network.sendKey("SPECIAL", true);
@@ -117,7 +145,7 @@ class SpatiebotCommandExecutor {
                 }
             }
 
-            if (this.isThrottleTimeElapsedFor("fire")) {
+            if (fireChanged || this.isThrottleTimeElapsedFor("fire")) {
                 let fireKey = "FIRE";
                 if (this.config.useSpecial === "FIRE") {
                     fireKey = "SPECIAL";
@@ -166,7 +194,6 @@ class SpatiebotCommandExecutor {
 
     private getRotDelta(myRot: number, desRot: number): { direction: string, rotDiff: number } {
         let rotDiff = Math.abs(myRot - desRot);
-        const pi = Math.atan2(0, -1);
         let direction;
         if (myRot > desRot) {
             if (rotDiff > pi) {
@@ -187,13 +214,12 @@ class SpatiebotCommandExecutor {
         return { direction, rotDiff };
     }
 
-    private turnToDesiredAngle() {
+    private turnToDesiredAngle(desRot: number) {
         if (this.state.angleTimeout) {
             // still turning
             return;
         }
 
-        const desRot = this.state.desiredAngle;
         const rotDelta = this.getRotDelta(Players.getMe().rot, desRot);
 
         if (rotDelta.rotDiff > this.config.precision) {

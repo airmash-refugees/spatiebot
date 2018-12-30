@@ -5,7 +5,7 @@ const navConfig = {
     mapProperties: { left: -16352, top: -8160, right: 16352, bottom: 8160 },
     maxGridLength: 2500,
     marginStep: 500,
-    scale: 0.25
+    scale: 0.1
 };
 
 class BotNavigation {
@@ -90,8 +90,21 @@ class BotNavigation {
         myPos = this.scale(myPos);
         otherPos = this.scale(otherPos);
 
-        if (!this.isValid(myPos) || !this.isValid(otherPos)) {
-            this.log("not valid for " + requestID);
+        if (!this.isValid(myPos)) {
+            let posLog = "";
+            if (myPos) {
+                posLog = myPos.x + "," + myPos.y;
+            }
+            this.log("myPos " + posLog + " is not valid for " + requestID);
+            return [];
+        }
+
+        if (!this.isValid(otherPos)) {
+            let posLog = "";
+            if (otherPos) {
+                posLog = otherPos.x + "," + otherPos.y;
+            }
+            this.log("otherPos " + posLog + " is not valid for " + requestID);
             return [];
         }
 
