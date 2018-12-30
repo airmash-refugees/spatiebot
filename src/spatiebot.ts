@@ -109,7 +109,7 @@ class SpatieBot {
 
             Spatie.log("Resetting bot");
             that.dispose();
-            setTimeout(() => that.initialize(), that.config.respawnTimeout);
+            setTimeout(() => that.initialize(), 1000);
         }
         this.state.resetTimeout = setTimeout(reset, 2 * 60 * 1000);
     }
